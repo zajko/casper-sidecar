@@ -24,6 +24,7 @@ use super::rpcs::{
         QueryBalance, QueryGlobalState,
     },
     RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
+    x::X,
 };
 
 /// The URL path for all JSON-RPC requests.
@@ -62,7 +63,8 @@ pub async fn run(
     ListRpcs::register_as_handler(node.clone(), &mut handlers);
     GetDictionaryItem::register_as_handler(node.clone(), &mut handlers);
     GetChainspec::register_as_handler(node.clone(), &mut handlers);
-    QueryBalance::register_as_handler(node, &mut handlers);
+    QueryBalance::register_as_handler(node.clone(), &mut handlers);
+    X::register_as_handler(node.clone(), &mut handlers);
     let handlers = handlers.build();
 
     match cors_origin.as_str() {
