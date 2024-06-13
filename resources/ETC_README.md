@@ -1,11 +1,12 @@
 # Casper Sidecar README for Node Operators
 
 This page contains specific instructions for node operators. Before proceeding, familiarize yourself with the main [README](../README.md) file, which covers the following:
- - [Summary of purpose](../README.md#summary-of-purpose)
- - [System components and architecture](../README.md#system-components-and-architecture)
- - [Configuration options](../README.md#configuring-the-sidecar)
- - [Running and testing the Sidecar](../README.md#running-and-testing-the-sidecar)
- - [Troubleshooting tips](../README.md#troubleshooting-tips)
+
+- [Summary of purpose](../README.md#summary-of-purpose)
+- [System components and architecture](../README.md#system-components-and-architecture)
+- [Configuration options](../README.md#configuring-the-sidecar)
+- [Running and testing the Sidecar](../README.md#running-and-testing-the-sidecar)
+- [Troubleshooting tips](../README.md#troubleshooting-tips)
 
 ## Sidecar Configuration on the Node
 
@@ -17,11 +18,11 @@ For more information, including how to setup the SSE, RPC, REST, and Admin serve
 
 ## Storage on the Node
 
-This directory stores the SSE cache and a database if the Sidecar was configured to use one.
+This directory stores the SSE cache and an SQLite database if the Sidecar was configured to use SQLite.
 
 ```toml
 [storage]
-storage_path = "/var/lib/casper-sidecar"
+storage_folder = "./target/storage"
 ```
 
 The DB setup is described [here](../README#database-connectivity-setup).
