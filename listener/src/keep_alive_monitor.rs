@@ -62,8 +62,8 @@ impl KeepAliveMonitor {
 
     /// Spawns tasks responsible for asynchronous checks of the monitored datasource.
     /// If a configured time of inactivity is detected, `cancellation_token` is cancelled.
-    pub async fn start(&self) {
-        self.spawn_last_seen_checker_task(
+    pub fn start(&self) {
+        Self::spawn_last_seen_checker_task(
             self.last_message_seen_at.clone(),
             self.sleep_between_checks,
             self.no_message_timeout,
@@ -87,7 +87,6 @@ impl KeepAliveMonitor {
     }
 
     fn spawn_last_seen_checker_task(
-        &self,
         last_activity_holder: Arc<Mutex<Option<Instant>>>,
         sleep_between_checks: Duration,
         no_message_timeout: Duration,
@@ -126,11 +125,11 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn should_cancel_when_first_check_finds_no_activity() {
         let monitor = KeepAliveMonitor::new(Duration::from_secs(1), Duration::from_secs(2));
-        monitor.start().await;
+        monitor.start();
         let cancellation_token = monitor.get_cancellation_token();
         select! {
-            _ = cancellation_token.cancelled() => {},
-            _ = sleep(Duration::from_secs(10)) => {
+            () = cancellation_token.cancelled() => {},
+            () = sleep(Duration::from_secs(10)) => {
                 unreachable!()
             },
         }
@@ -143,13 +142,13 @@ mod tests {
             Duration::from_secs(30),
         ));
         sse_server(monitor.clone(), 1);
-        monitor.start().await;
+        monitor.start();
         let cancellation_token = monitor.get_cancellation_token();
         select! {
-            _ = cancellation_token.cancelled() => {
+            () = cancellation_token.cancelled() => {
                 unreachable!()
             },
-            _ = sleep(Duration::from_secs(15)) => {
+            () = sleep(Duration::from_secs(15)) => {
             },
         }
     }
@@ -161,12 +160,12 @@ mod tests {
             Duration::from_secs(3),
         ));
         sse_server(monitor.clone(), 1500); //1500 seconds of interval to make sure that the monitor won't see activity
-        monitor.start().await;
+        monitor.start();
         let cancellation_token = monitor.get_cancellation_token();
         select! {
-            _ = cancellation_token.cancelled() => {
+            () = cancellation_token.cancelled() => {
             },
-            _ = sleep(Duration::from_secs(15)) => {
+            () = sleep(Duration::from_secs(15)) => {
                 unreachable!()
             },
         }

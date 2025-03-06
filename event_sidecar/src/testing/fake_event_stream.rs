@@ -152,14 +152,13 @@ pub(crate) async fn spin_up_fake_event_stream(
         event_stream_server,
     )
     .await;
-    log_test_end(log_details, start);
+    log_test_end(&log_details, start);
     returned_test_rng
 }
 
-fn log_test_end(log_details: String, start: Instant) {
+fn log_test_end(log_details: &str, start: Instant) {
     println!(
-        "{} :: Completed ({}s)",
-        log_details,
+        "{log_details} :: Completed ({}s)",
         start.elapsed().as_secs()
     );
 }
@@ -170,13 +169,12 @@ fn build_event_stream_server(
 ) -> (EventStreamServer, String) {
     let cloned_address = ess_config.address.clone();
     let port = cloned_address.split(':').collect::<Vec<&str>>()[1];
-    let log_details = format!("Fake Event Stream(:{}) :: Scenario: {}", port, scenario);
-    println!("{} :: Started", log_details);
+    let log_details = format!("Fake Event Stream(:{port}) :: Scenario: {scenario}");
+    println!("{log_details} :: Started");
     let temp_dir = TempDir::new().expect("Error creating temporary directory");
 
-    let event_stream_server =
-        EventStreamServer::new(ess_config, temp_dir.path().to_path_buf(), true)
-            .expect("Error spinning up Event Stream Server");
+    let event_stream_server = EventStreamServer::new(ess_config, temp_dir.path(), true)
+        .expect("Error spinning up Event Stream Server");
     (event_stream_server, log_details)
 }
 
@@ -645,7 +643,7 @@ pub async fn wait_for_build_version_server_to_be_up(port: u16) {
                 max_attempts
             );
         }
-        let res = reqwest::get(format!("http://127.0.0.1:{}/status", port)).await;
+        let res = reqwest::get(format!("http://127.0.0.1:{port}/status")).await;
         match res {
             Err(_) => {}
             Ok(response) => {
