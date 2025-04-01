@@ -53,5 +53,5 @@ jobs:
 
       # Required in case of overwrite
       - name: Invalidate CloudFront cache
-        run: aws cloudfront create-invalidation --distribution-id ${{ secrets.AWS_CLOUDFRONT_GENESIS }} --paths "/artifacts/casper-node/$(git rev-parse HEAD)/*"
+        run: aws cloudfront create-invalidation --distribution-id ${{ secrets.AWS_CLOUDFRONT_GENESIS }} --paths "/artifacts/casper-sidecar/$(git rev-parse HEAD)/*"
 
