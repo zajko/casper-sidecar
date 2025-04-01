@@ -1,0 +1,57 @@
+---
+name: push-artifacts
+permissions:
+  contents: read
+  id-token: write
+
+on:
+  push:
+    branches:
+      - dev
+      - 'feat-**'
+      - 'release-**'
+
+jobs:
+  push_artifacts:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-20.04
+            code_name: focal
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b #v3.0.2
+
+      # Assign AWS PROD role to get access to production cloudfronts and S3 buckets
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ACCESS_ROLE_GENESIS }}
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          aws-region: ${{ secrets.AWS_ACCESS_REGION_GENESIS }}
+
+      # jq python and python toml required for build_update_package.sh
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq python3 python3-toml
+          python3 --version
+
+      - name: Install cargo deb
+        run: cargo install cargo-deb
+
+      - name: Cargo deb
+        run: cargo deb -p casper-sidecar --variant ${{ matrix.code_name }}
+
+      - name: Build update package
+        run: ./ci/build_artifacts_for_upload.sh
+
+      - name: Upload artifacts to S3
+        run: aws s3 sync ./target/artifacts/ s3://${{ secrets.AWS_BUCKET_GENESIS }}/artifacts/casper-sidecar/$(git rev-parse HEAD)/
+
+      # Required in case of overwrite
+      - name: Invalidate CloudFront cache
+        run: aws cloudfront create-invalidation --distribution-id ${{ secrets.AWS_CLOUDFRONT_GENESIS }} --paths "/artifacts/casper-node/$(git rev-parse HEAD)/*"
+
