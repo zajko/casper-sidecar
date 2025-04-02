@@ -86,7 +86,7 @@ mod request;
 mod request_handlers;
 mod response;
 
-use std::{hash::Hash, num::NonZeroU32};
+use std::{hash::Hash, num::NonZeroU32, time::Duration};
 
 use casper_types::TimeDiff;
 use datasize::DataSize;
@@ -95,7 +95,7 @@ use http::{header::CONTENT_TYPE, Method};
 use serde::Deserialize;
 use warp::{filters::BoxedFilter, Filter, Reply};
 
-pub use error::{Error, ErrorCodeT, ReservedErrorCode};
+pub use error::{Error, ErrorCodeT, ReservedErrorCode, RpcErrorCode};
 pub use request::Params;
 pub use request_handlers::{RequestHandlers, RequestHandlersBuilder};
 pub use response::Response;
@@ -136,7 +136,10 @@ impl ConfigLimit {
     /// Return connection limit as `Quota`.
     #[must_use]
     pub fn quota(&self) -> Quota {
-        if let Some(quota) = Quota::with_period(self.period.into()) {
+        // Governor keeps N slots. Each slot expires within a given period.
+        // To keep the desired rate, the period has to be divided by N.
+        let period: Duration = self.period.into();
+        if let Some(quota) = Quota::with_period(period / self.requests.get()) {
             quota.allow_burst(self.requests)
         } else {
             Quota::per_second(self.requests)

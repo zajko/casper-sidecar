@@ -7,7 +7,7 @@ description = "A library suitable for use as the framework for a JSON-RPC server
 readme = "README.md"
 documentation = "https://docs.rs/casper-json-rpc"
 homepage = "https://casperlabs.io"
-repository = "https://github.com/casper-network/casper-node/tree/master/json_rpc"
+repository = "https://github.com/casper-network/casper-sidecar/tree/master/json_rpc"
 license = "Apache-2.0"
 
 [dependencies]
@@ -25,7 +25,7 @@ tracing = { workspace = true, default-features = true }
 warp = { workspace = true }
 
 [dev-dependencies]
-env_logger = "0"
+env_logger = "0.11"
 hyper = "0.14"
 tokio = { workspace = true, features = [
     "macros",

@@ -1,6 +1,6 @@
 [package]
 name = "casper-sidecar"
-version = "1.0.1"
+version = "1.0.3"
 authors = ["Jakub Zajkowski <jakub@casperlabs.io>"]
 edition = "2021"
 description = "Base module that spins up casper sidecar"
@@ -13,8 +13,9 @@ license = "Apache-2.0"
 async-trait = { workspace = true }
 anyhow = { workspace = true }
 backtrace = "0.3"
-casper-event-sidecar = { workspace = true }
-casper-rpc-sidecar = { workspace = true }
+casper-event-sidecar.workspace = true
+casper-event-types.workspace = true
+casper-rpc-sidecar.workspace = true
 clap = { version = "4.0", features = ["derive"] }
 datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
 derive-new = { workspace = true }

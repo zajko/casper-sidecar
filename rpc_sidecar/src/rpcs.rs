@@ -30,7 +30,7 @@ use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{json, Value};
 use tokio::sync::oneshot;
-use tracing::info;
+use tracing::{debug, info};
 use warp::{
     filters::BoxedFilter,
     reject::{Reject, Rejection},
@@ -112,7 +112,14 @@ pub(super) trait RpcWithParams {
             let node_client = Arc::clone(&node_client);
             async move {
                 let params = Self::try_parse_params(maybe_params)?;
-                Self::do_handle_request(node_client, params).await
+                let res = Self::do_handle_request(node_client, params).await;
+                match &res {
+                    Ok(_) => {}
+                    Err(err) => {
+                        debug!(error=?err, method=Self::METHOD, "Error when handling request.")
+                    }
+                }
+                res
             }
         };
         handlers_builder.register_handler(Self::METHOD, handler, &limit);
@@ -173,7 +180,11 @@ pub(super) trait RpcWithoutParams {
             let node_client = Arc::clone(&node_client);
             async move {
                 Self::check_no_params(maybe_params)?;
-                Self::do_handle_request(node_client).await
+                let res = Self::do_handle_request(node_client).await;
+                if let Err(err) = &res {
+                    debug!(error=?err, method=Self::METHOD, "Error when handling request.")
+                }
+                res
             }
         };
         handlers_builder.register_handler(Self::METHOD, handler, &limit);
@@ -255,7 +266,14 @@ pub(super) trait RpcWithOptionalParams {
             let node_client = Arc::clone(&node_client);
             async move {
                 let params = Self::try_parse_params(maybe_params)?;
-                Self::do_handle_request(node_client, params).await
+                let res = Self::do_handle_request(node_client, params).await;
+                match &res {
+                    Ok(_) => {}
+                    Err(err) => {
+                        debug!(error=?err, method=Self::METHOD, "Error when handling request.")
+                    }
+                }
+                res
             }
         };
         handlers_builder.register_handler(Self::METHOD, handler, &limit);
@@ -289,10 +307,12 @@ async fn handle_rejection(error: Rejection) -> Result<impl Reply, Rejection> {
             reply::json(&json!({ "message": "Too many requests" })),
             StatusCode::TOO_MANY_REQUESTS,
         );
+        // Retry-After returns decimal integer indicating the seconds to delay after the response
+        // is received. Add one second to the wait time to round up and be on the safe side.
         Ok(reply::with_header(
             response,
             RETRY_AFTER,
-            rejection.0.as_secs().to_string(),
+            (rejection.0.as_secs() + 1).to_string(),
         ))
     } else {
         Err(error)
@@ -457,9 +477,8 @@ mod tests {
     }
 
     mod rpc_with_params {
-        use crate::rpcs::info::{GetDeploy, GetDeployParams, GetDeployResult};
-
         use super::*;
+        use crate::rpcs::info::{GetDeploy, GetDeployParams, GetDeployResult};
 
         fn main_filter_with_recovery() -> BoxedFilter<(impl Reply,)> {
             let mut handlers = RequestHandlersBuilder::new();
@@ -525,10 +544,10 @@ mod tests {
     }
 
     mod rpc_without_params {
-
-        use crate::rpcs::info::{GetPeers, GetPeersResult};
+        use casper_json_rpc::{RpcErrorCode, DEFAULT_LIMIT_PERIOD, DEFAULT_LIMIT_REQUESTS};
 
         use super::*;
+        use crate::rpcs::info::{GetPeers, GetPeersResult};
 
         fn main_filter_with_recovery() -> BoxedFilter<(impl Reply,)> {
             let mut handlers = RequestHandlersBuilder::new();
@@ -575,6 +594,28 @@ mod tests {
                     "'params' field should be an empty Array '[]', an empty Object '{}' or absent"
                 )
             );
+        }
+
+        #[tokio::test]
+        async fn reach_rate_limit() {
+            let filter = main_filter_with_recovery();
+
+            for _ in 0..DEFAULT_LIMIT_REQUESTS.into() {
+                let rpc_response = send_request(GetPeers::METHOD, None, &filter).await;
+                assert!(rpc_response.is_success());
+            }
+
+            let rpc_response = send_request(GetPeers::METHOD, None, &filter).await;
+            assert_eq!(
+                rpc_response.error().unwrap().code(),
+                RpcErrorCode::RequestThrottled as i64
+            );
+
+            // Wait for the limit period to expire.
+            tokio::time::sleep(DEFAULT_LIMIT_PERIOD.into()).await;
+
+            let rpc_response = send_request(GetPeers::METHOD, None, &filter).await;
+            assert!(rpc_response.is_success());
         }
     }
 

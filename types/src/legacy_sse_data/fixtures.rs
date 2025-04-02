@@ -392,9 +392,7 @@ const RAW_TRANSACTION_ACCEPTED: &str = r#"
           ]
         },
         "entry_point": "AddBid",
-        "scheduling": {
-          "FutureEra": 195120
-        },
+        "scheduling": "Standard",
         "target": "Native"
     }
   },
@@ -845,6 +843,8 @@ const RAW_DEPLOY_PROCESSED: &str = r#"{
                 "initiator": {
                     "PublicKey": "0203d98e2ec694b981cebd7cf35ac531d8717e86dc35912f2536b8807ad550621147"
                 },
+                "current_price": 1,
+                "refund": "100",
                 "error_message": "Error message 18290057561582514745",
                 "limit": "11209375253254652626",
                 "consumed": "10059559442643035623",
@@ -856,7 +856,7 @@ const RAW_DEPLOY_PROCESSED: &str = r#"{
         },
         "messages": [
             {
-                "hash_addr": "7da5cc7bb0035d5e2a05014c4ac8e23ec2b198988da9401411040efddb0108ef",
+                "entity_addr": "entity-contract-8d878886b9c95d8a598ef71ccb6a68a54e2f806058faf0b9ea28a4bc7df4eeb3",
                 "entity_hash": "entity-system-fbd35eaf71f295b3bf35a295e705f629bbea28cefedfc109eda1205fb3650bad",
                 "message": {
                     "String": "cs5rHI2Il75nRJ7GLs7BQM5CilvzMqu0dgFuj57FkqEs3431LJ1qfsZActb05hzR"

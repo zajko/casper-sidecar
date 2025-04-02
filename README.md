@@ -26,7 +26,6 @@
   - [Prerequisites](#prerequisites)
   - [Running the Sidecar](#running-the-sidecar)
   - [Testing the Sidecar](#testing-the-sidecar)
-- [Swagger Documentation](#swagger-documentation)
 - [OpenAPI Specification](#openapi-specification)
 - [Troubleshooting Tips](#troubleshooting-tips)
   - [Checking liveness](#checking-liveness)
@@ -126,7 +125,7 @@ Enabling and configuring the SSE Server of the Sidecar is optional.
 
 ### The REST API server
 
-The Sidecar offers an optional REST API that allows clients to query the events stored in external storage. You can discover the specific endpoints of the REST API using [OpenAPI](#openapi-specification) and [Swagger](#swagger-documentation). The [usage instructions](USAGE.md) provide more details.
+The Sidecar offers an optional REST API that allows clients to query the events stored in external storage. You can discover the specific endpoints of the REST API using [OpenAPI](#openapi-specification). The [usage instructions](USAGE.md) provide more details.
 
 ```mermaid
    graph LR;
@@ -225,6 +224,7 @@ max_attempts = 30
 ```
 
 - `main_server.enable_server` - The RPC API server will be enabled if set to true.
+- `main_server.enable_block_prefetch` - optional (default `false`). If set to `true` the [prefetching blocks feature](#prefetching-blocks-feature) will be enabled
 - `main_server.address` - Address under which the main RPC API server will be available.
 - `main_server.qps_limit` - The maximum number of requests per second.
 - `main_server.max_body_bytes` - Maximum body size of request to API in bytes.
@@ -245,6 +245,11 @@ max_attempts = 30
 - `node_client.exponential_backoff.max_delay_ms` - Maximum timeout after a broken connection in milliseconds.
 - `node_client.exponential_backoff.coefficient` - Coefficient for the exponential backoff. The next timeout is calculated as min(`current_timeout * coefficient`, `max_delay_ms`).
 - `node_client.exponential_backoff.max_attempts` - Maximum number of times to try to reconnect to the binary port of the node.
+
+#### Prefetching blocks feature
+
+The RPC server can be configured to prefetch highest block. To enable this feature set `rpc_server.main_server.enable_block_prefetch` to `true`. If this flag is set to true, the RPC server will observe `BlockAdded` events from the [sse feed](#SSE-server-setup). If a new `BlockAdded` event will be observed, and it's height is higher than any of the heights observed uptill this point in time - the RPC server will fetch the blocks data from binary port in the node. The obtained data will be cached in memory. If someone calls sidecars `chain_get_block` json RPC API requests without params (effectively asking for "newest" block) - the cached data will be served.
+This feature is based both on the RPC and SSE sides of sidecar. If enabled, it will not verify that the SSE feed is operational, enabled or even defined. There will be no error of warning notice if `enable_block_prefetch` is `true` but SSE is not turned on. This mechanism will react to observed `BlockAdded` events, but it won't obstruct the RPCs function if no `BlockAdded` events will be ever observed.
 
 ### SSE server setup
 
@@ -536,10 +541,6 @@ The Sidecar application can be tested against live Casper nodes or a local [NCTL
 
 The configuration shown [here](./resources/example_configs/EXAMPLE_NCTL_CONFIG.toml) will direct the Sidecar application to a locally hosted NCTL network if one is running. The Sidecar should function the same way it would while connected to a live node, displaying events as they occur in the local NCTL network.
 
-## Swagger Documentation
-
-Once the Sidecar is running, access the Swagger documentation at `http://localhost:18888/swagger-ui/`. You need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely. The Swagger documentation will allow you to test the REST API.
-
 ## OpenAPI Specification
 
 An OpenAPI schema is available at `http://localhost:18888/api-doc.json/`. You need to replace `localhost` with the IP address of the machine running the Sidecar application if you are running the Sidecar remotely.
@@ -618,7 +619,7 @@ Ensuring enough space in the database is essential for the Sidecar to consume ev
 
 ### Inspecting the REST API
 
-The easiest way to inspect the Sidecar’s REST API is with [Swagger](#swagger-documentation).
+The easiest way to inspect the Sidecar’s REST API is by analyzing the [Open API specification](# openapi-specification).
 
 ### Limiting concurrent requests
 
