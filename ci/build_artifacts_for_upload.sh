@@ -35,5 +35,5 @@ jq --null-input \
 --arg ghash "$GIT_HASH" \
 --arg now "$(jq -nr 'now | strftime("%Y-%m-%dT%H:%M:%SZ")')" \
 --arg files "$(ls "$ARTIFACT_DIR" | jq -nRc '[inputs]')" \
-'{"branch": $branch, "version": $version, "git-hash": $ghash, "tag": $tag, "timestamp": $now, "files": $files}' \
+'{"branch": $branch, "version": $version, "git-hash": $ghash, "timestamp": $now, "files": $files}' \
 > "$ARTIFACT_DIR/version.json"
