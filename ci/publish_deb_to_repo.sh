@@ -11,7 +11,7 @@ fi
 
 # Verify if its the first time publishing. Will need to know later.
 # Probably an easier way to do this check :)
-EXISTS=$(aws s3 ls s3://"$PLUGIN_REPO_NAME"/releases/dists/ --region "$PLUGIN_REGION" | grep "$PLUGIN_OS_CODENAME") || EXISTS_RET="false"
+EXISTS_RET=$(aws s3 ls s3://"$PLUGIN_REPO_NAME"/releases/dists/ --region "$PLUGIN_REGION" | grep "$PLUGIN_OS_CODENAME") || EXISTS_RET="false"
 
 # Sanity Check for later
 if [ "$EXISTS_RET" = "false" ]; then
