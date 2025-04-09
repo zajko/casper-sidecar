@@ -27,6 +27,7 @@ bytes = "1.2.0"
 casper-event-listener = { workspace = true }
 casper-event-types = { workspace = true }
 casper-types = { workspace = true }
+deranged = "=0.4.0"
 derive-new = { workspace = true }
 eventsource-stream = "0.2.3"
 futures = { workspace = true }
