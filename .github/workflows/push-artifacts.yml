@@ -48,10 +48,13 @@ jobs:
       - name: Build update package
         run: ./ci/build_artifacts_for_upload.sh
 
+      - name: Upload latest file to s3
+        run: aws s3 sync ./target/latest/ s3://${{ secrets.AWS_BUCKET_GENESIS }}/artifacts/casper-sidecar/
+
       - name: Upload artifacts to S3
         run: aws s3 sync ./target/artifacts/ s3://${{ secrets.AWS_BUCKET_GENESIS }}/artifacts/casper-sidecar/$(git rev-parse HEAD)/
 
-      # Required in case of overwrite
+      # Required in for overwrite and latest file update
       - name: Invalidate CloudFront cache
-        run: aws cloudfront create-invalidation --distribution-id ${{ secrets.AWS_CLOUDFRONT_GENESIS }} --paths "/artifacts/casper-sidecar/$(git rev-parse HEAD)/*"
+        run: aws cloudfront create-invalidation --distribution-id ${{ secrets.AWS_CLOUDFRONT_GENESIS }} --paths "/artifacts/casper-sidecar/*"
 
