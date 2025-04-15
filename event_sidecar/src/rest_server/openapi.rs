@@ -13,16 +13,22 @@ use casper_types::{
     execution::{execution_result_v1::ExecutionEffect, Effects, ExecutionResult},
     Block, BlockHash, FinalitySignature, RuntimeArgs, Transaction,
 };
-use schemars::{schema::SchemaObject, schema_for, visit::Visitor};
+use schemars::{
+    schema::{RootSchema, SchemaObject},
+    schema_for,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::{
     openapi::{Components, Contact, RefOr, Schema},
-    Modify, OpenApi,
+    Modify, OpenApi, ToSchema,
 };
-use warp::Filter;
+use warp::{Filter, Rejection, Reply};
 
-use self::schema_transformation_visitor::SchemaTransformationVisitor;
+#[allow(dead_code)]
+#[derive(ToSchema)]
+#[schema(value_type = Object)]
+struct FinalitySignatureWithSchema(FinalitySignature);
 
 #[derive(OpenApi)]
 #[openapi(
@@ -38,14 +44,12 @@ use self::schema_transformation_visitor::SchemaTransformationVisitor;
             crate::rest_server::filters::faults_by_era,
             crate::rest_server::filters::finality_signatures_by_block,
             crate::rest_server::filters::step_by_era,
-
-
         ),
         components(
-            schemas(EnvelopeHeader, BlockAddedEnveloped, TransactionAcceptedEnveloped, TransactionExpiredEnveloped, TransactionProcessedEnveloped, FaultEnveloped, FinalitySignatureEnveloped, StepEnveloped, Step, Fault, TransactionExpired, TransactionAggregate, TransactionAccepted, TransactionProcessed, BlockAdded)
+            schemas(EnvelopeHeader, SseEnvelope<BlockAdded>, SseEnvelope<TransactionAccepted>, SseEnvelope<TransactionExpired>, SseEnvelope<TransactionProcessed>, SseEnvelope<Fault>, SseEnvelope<FinalitySignatureWithSchema>, SseEnvelope<Step>, Step, Fault, TransactionExpired, TransactionAggregate, TransactionAccepted, TransactionProcessed, BlockAdded)
         ),
         tags(
-            (name = "event-sidecar", description = "Event-sidecar rest API")
+            (name = "event-sidecar", description = "Event-sidecar REST API")
         )
     )]
 struct ApiDoc;
@@ -63,36 +67,34 @@ impl Modify for AuthorsModification {
 
 fn extend_open_api_with_schemars_schemas(
     components: &mut Components,
-    names_and_schemas: Vec<(String, schemars::schema::RootSchema)>,
+    names_and_schemas: Vec<(&str, RootSchema)>,
 ) {
     for (name, schema) in names_and_schemas {
         let (execution_result, additional_components) = force_produce_utoipa_schemas(schema);
-        components.schemas.insert(name, execution_result);
+        components
+            .schemas
+            .insert(name.to_string(), execution_result);
         for (key, value) in additional_components {
             components.schemas.insert(key, value);
         }
     }
 }
 
-pub fn build_open_api_filters(
-) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+pub fn build_open_api_filters() -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     let mut doc = ApiDoc::openapi();
     let mut components = doc.components.unwrap();
     extend_open_api_with_schemars_schemas(
         &mut components,
         vec![
-            ("Block".to_string(), schema_for!(Block)),
-            ("BlockHash".to_string(), schema_for!(BlockHash)),
-            ("RuntimeArgs".to_string(), schema_for!(RuntimeArgs)),
-            (
-                "FinalitySignature".to_string(),
-                schema_for!(FinalitySignature),
-            ),
-            ("ExecutionEffect".to_string(), schema_for!(ExecutionEffect)),
-            ("Effects".to_string(), schema_for!(Effects)),
-            ("Transaction".to_string(), schema_for!(Transaction)),
-            ("ExecutionResult".to_string(), schema_for!(ExecutionResult)),
-            ("Messages".to_string(), schema_for!(Messages)),
+            ("Block", schema_for!(Block)),
+            ("BlockHash", schema_for!(BlockHash)),
+            ("Effects", schema_for!(Effects)),
+            ("ExecutionEffect", schema_for!(ExecutionEffect)),
+            ("ExecutionResult", schema_for!(ExecutionResult)),
+            ("FinalitySignature", schema_for!(FinalitySignature)),
+            ("Messages", schema_for!(Messages)),
+            ("RuntimeArgs", schema_for!(RuntimeArgs)),
+            ("Transaction", schema_for!(Transaction)),
         ],
     );
     doc.components = Some(components);
@@ -103,31 +105,30 @@ pub fn build_open_api_filters(
 }
 
 fn force_produce_utoipa_schemas(
-    mut root_schema: schemars::schema::RootSchema,
+    root_schema: RootSchema,
 ) -> (RefOr<Schema>, HashMap<String, RefOr<Schema>>) {
-    let mut visitor = SchemaTransformationVisitor {
-        skip_additional_properties: true,
-    };
-    visitor.visit_root_schema(&mut root_schema);
-
-    let schema_wrapper = RefOr::from(rebuild_schema_object("RootSchema", root_schema.schema));
+    let schema_wrapper = RefOr::from(rebuild_schema_object("RootSchema", &root_schema.schema));
     let mut rebuilt_schema_objects = HashMap::new();
     for (key, value) in root_schema.definitions {
+        // FIXME: hack to avoid "data did not match any variant of untagged enum Schema"
+        if key == "CLValue" {
+            continue;
+        }
         rebuilt_schema_objects.insert(
             key.clone(),
-            RefOr::from(rebuild_schema_object(&key, value.into_object())),
+            RefOr::from(rebuild_schema_object(&key, &value.into_object())),
         );
     }
     (schema_wrapper, rebuilt_schema_objects)
 }
 
-fn rebuild_schema_object(key: &str, schemars_schema_obj: SchemaObject) -> utoipa::openapi::Schema {
+fn rebuild_schema_object(key: &str, schemars_schema_obj: &SchemaObject) -> Schema {
     let schema_str = serde_json::to_string(&schemars_schema_obj).unwrap();
-    match serde_json::from_str::<utoipa::openapi::Schema>(&schema_str) {
+    match serde_json::from_str::<Schema>(&schema_str) {
         Ok(x) => x,
         Err(e) => {
             panic!(
-                "Failed handling schema for type {}. Err: {}\n\n\n{}",
+                "Failed handling schema for type {}. Err: {}\n\n{}",
                 key, e, schema_str
             );
         }
