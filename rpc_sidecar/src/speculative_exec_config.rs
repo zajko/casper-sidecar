@@ -4,7 +4,7 @@ use std::{
     num::NonZeroU32,
 };
 
-use casper_json_rpc::{nonzero_u32, ConfigLimit, DEFAULT_LIMIT_PERIOD, DEFAULT_LIMIT_REQUESTS};
+use casper_json_rpc::{ConfigLimit, DEFAULT_LIMIT_PERIOD, DEFAULT_LIMIT_REQUESTS, nonzero_u32};
 use casper_types::TimeDiff;
 use datasize::DataSize;
 use serde::Deserialize;
@@ -15,7 +15,7 @@ use serde::Deserialize;
 const DEFAULT_IP_ADDRESS: IpAddr = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
 const DEFAULT_PORT: u16 = 1;
 /// Default rate limit in qps.
-const DEFAULT_QPS_LIMIT: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1) };
+const DEFAULT_QPS_LIMIT: NonZeroU32 = NonZeroU32::new(1).unwrap();
 /// Default max body bytes (2.5MB).
 const DEFAULT_MAX_BODY_BYTES: u64 = 2_621_440;
 /// Default CORS origin.

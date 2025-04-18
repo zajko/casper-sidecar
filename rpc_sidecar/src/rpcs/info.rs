@@ -1,31 +1,34 @@
 //! RPCs returning ancillary information.
 
-use std::{collections::BTreeMap, str, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    str,
+    sync::{Arc, LazyLock},
+};
 
 use async_trait::async_trait;
 use casper_binary_port::{EraIdentifier as PortEraIdentifier, MinimalBlockInfo};
-use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    execution::{ExecutionResult, ExecutionResultV2},
     ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockIdentifier,
     BlockSynchronizerStatus, ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionInfo,
     NextUpgrade, Peers, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
-    TransactionHash, ValidatorChange, U512,
+    TransactionHash, U512, ValidatorChange,
+    execution::{ExecutionResult, ExecutionResultV2},
 };
 
 use super::{
-    docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
-    ApiVersion, Error, NodeClient, RpcError, RpcWithParams, RpcWithoutParams, CURRENT_API_VERSION,
+    ApiVersion, CURRENT_API_VERSION, Error, NodeClient, RpcError, RpcWithParams, RpcWithoutParams,
+    docs::{DOCS_EXAMPLE_API_VERSION, DocExample},
 };
 
-static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
+static GET_DEPLOY_PARAMS: LazyLock<GetDeployParams> = LazyLock::new(|| GetDeployParams {
     deploy_hash: *Deploy::doc_example().hash(),
     finalized_approvals: true,
 });
-static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
+static GET_DEPLOY_RESULT: LazyLock<GetDeployResult> = LazyLock::new(|| GetDeployResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     deploy: Deploy::doc_example().clone(),
     execution_info: Some(ExecutionInfo {
@@ -34,27 +37,29 @@ static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
         execution_result: Some(ExecutionResult::from(ExecutionResultV2::example().clone())),
     }),
 });
-static GET_TRANSACTION_PARAMS: Lazy<GetTransactionParams> = Lazy::new(|| GetTransactionParams {
-    transaction_hash: Transaction::doc_example().hash(),
-    finalized_approvals: true,
-});
-static GET_TRANSACTION_RESULT: Lazy<GetTransactionResult> = Lazy::new(|| GetTransactionResult {
-    api_version: DOCS_EXAMPLE_API_VERSION,
-    transaction: Transaction::doc_example().clone(),
-    execution_info: Some(ExecutionInfo {
-        block_hash: *Block::example().hash(),
-        block_height: Block::example().height(),
-        execution_result: Some(ExecutionResult::from(ExecutionResultV2::example().clone())),
-    }),
-});
-static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
+static GET_TRANSACTION_PARAMS: LazyLock<GetTransactionParams> =
+    LazyLock::new(|| GetTransactionParams {
+        transaction_hash: Transaction::doc_example().hash(),
+        finalized_approvals: true,
+    });
+static GET_TRANSACTION_RESULT: LazyLock<GetTransactionResult> =
+    LazyLock::new(|| GetTransactionResult {
+        api_version: DOCS_EXAMPLE_API_VERSION,
+        transaction: Transaction::doc_example().clone(),
+        execution_info: Some(ExecutionInfo {
+            block_hash: *Block::example().hash(),
+            block_height: Block::example().height(),
+            execution_result: Some(ExecutionResult::from(ExecutionResultV2::example().clone())),
+        }),
+    });
+static GET_PEERS_RESULT: LazyLock<GetPeersResult> = LazyLock::new(|| GetPeersResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     peers: Some(("tls:0101..0101".to_owned(), "127.0.0.1:54321".to_owned()))
         .into_iter()
         .collect::<BTreeMap<_, _>>()
         .into(),
 });
-static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new(|| {
+static GET_VALIDATOR_CHANGES_RESULT: LazyLock<GetValidatorChangesResult> = LazyLock::new(|| {
     let change = JsonValidatorStatusChange::new(EraId::new(1), ValidatorChange::Added);
     let public_key = PublicKey::example().clone();
     let changes = vec![JsonValidatorChanges::new(public_key, vec![change])];
@@ -63,12 +68,12 @@ static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new
         changes,
     }
 });
-static GET_CHAINSPEC_RESULT: Lazy<GetChainspecResult> = Lazy::new(|| GetChainspecResult {
+static GET_CHAINSPEC_RESULT: LazyLock<GetChainspecResult> = LazyLock::new(|| GetChainspecResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     chainspec_bytes: ChainspecRawBytes::new(vec![42, 42].into(), None, None),
 });
 
-static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| GetStatusResult {
+static GET_STATUS_RESULT: LazyLock<GetStatusResult> = LazyLock::new(|| GetStatusResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     protocol_version: ProtocolVersion::from_parts(2, 0, 0),
     peers: GET_PEERS_RESULT.peers.clone(),
@@ -94,12 +99,12 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| GetStatusResult {
     #[cfg(test)]
     build_version: String::from("1.0.0-xxxxxxxxx@DEBUG"),
 });
-static GET_REWARD_PARAMS: Lazy<GetRewardParams> = Lazy::new(|| GetRewardParams {
+static GET_REWARD_PARAMS: LazyLock<GetRewardParams> = LazyLock::new(|| GetRewardParams {
     era_identifier: Some(EraIdentifier::Era(EraId::new(1))),
     validator: PublicKey::example().clone(),
     delegator: Some(PublicKey::example().clone()),
 });
-static GET_REWARD_RESULT: Lazy<GetRewardResult> = Lazy::new(|| GetRewardResult {
+static GET_REWARD_RESULT: LazyLock<GetRewardResult> = LazyLock::new(|| GetRewardResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     reward_amount: U512::from(42),
     era_id: EraId::new(1),
@@ -625,15 +630,15 @@ fn version_string() -> String {
 mod tests {
     use std::convert::TryFrom;
 
-    use crate::{rpcs::ErrorCode, ClientError};
+    use crate::{ClientError, rpcs::ErrorCode};
     use casper_binary_port::{
         BinaryResponse, BinaryResponseAndRequest, Command, GetRequest, InformationRequest,
         InformationRequestTag, RewardResponse, TransactionWithExecutionInfo,
     };
     use casper_types::{
+        BlockHash, TransactionV1,
         bytesrepr::{Bytes, FromBytes, ToBytes},
         testing::TestRng,
-        BlockHash, TransactionV1,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -652,10 +657,12 @@ mod tests {
 
         let json_value = serde_json::to_value(&result).unwrap();
 
-        assert!(json_value
-            .get("execution_info")
-            .expect("should have execution_info")
-            .is_null());
+        assert!(
+            json_value
+                .get("execution_info")
+                .expect("should have execution_info")
+                .is_null()
+        );
     }
 
     #[tokio::test]
@@ -670,10 +677,12 @@ mod tests {
 
         let json_value = serde_json::to_value(&result).unwrap();
 
-        assert!(json_value
-            .get("execution_info")
-            .expect("should have execution_info")
-            .is_null());
+        assert!(
+            json_value
+                .get("execution_info")
+                .expect("should have execution_info")
+                .is_null()
+        );
     }
 
     #[tokio::test]
@@ -682,10 +691,10 @@ mod tests {
         let transaction = Transaction::from(TransactionV1::random(rng));
         let execution_info = ExecutionInfo {
             block_hash: BlockHash::random(rng),
-            block_height: rng.gen(),
+            block_height: rng.r#gen(),
             execution_result: Some(ExecutionResult::random(rng)),
         };
-        let finalized_approvals = rng.gen();
+        let finalized_approvals = rng.r#gen();
 
         let resp = GetTransaction::do_handle_request(
             Arc::new(ValidTransactionMock::new(
@@ -719,10 +728,10 @@ mod tests {
         let deploy = Deploy::random(rng);
         let execution_info = ExecutionInfo {
             block_hash: BlockHash::random(rng),
-            block_height: rng.gen(),
+            block_height: rng.r#gen(),
             execution_result: Some(ExecutionResult::random(rng)),
         };
-        let finalized_approvals = rng.gen();
+        let finalized_approvals = rng.r#gen();
 
         let resp = GetTransaction::do_handle_request(
             Arc::new(ValidTransactionMock::new(
@@ -756,10 +765,10 @@ mod tests {
         let deploy = Deploy::random(rng);
         let execution_info = ExecutionInfo {
             block_hash: BlockHash::random(rng),
-            block_height: rng.gen(),
+            block_height: rng.r#gen(),
             execution_result: Some(ExecutionResult::random(rng)),
         };
-        let finalized_approvals = rng.gen();
+        let finalized_approvals = rng.r#gen();
 
         let resp = GetDeploy::do_handle_request(
             Arc::new(ValidTransactionMock::new(
@@ -793,10 +802,10 @@ mod tests {
         let transaction = TransactionV1::random(rng);
         let execution_info = ExecutionInfo {
             block_hash: BlockHash::random(rng),
-            block_height: rng.gen(),
+            block_height: rng.r#gen(),
             execution_result: Some(ExecutionResult::random(rng)),
         };
-        let finalized_approvals = rng.gen();
+        let finalized_approvals = rng.r#gen();
 
         let err = GetDeploy::do_handle_request(
             Arc::new(ValidTransactionMock::new(
@@ -823,7 +832,7 @@ mod tests {
         let reward_amount = U512::from(rng.gen_range(0..1000));
         let era_id = EraId::new(rng.gen_range(0..1000));
         let validator = PublicKey::random(rng);
-        let delegator = rng.gen::<bool>().then(|| PublicKey::random(rng));
+        let delegator = rng.r#gen::<bool>().then(|| PublicKey::random(rng));
         let delegation_rate = rng.gen_range(0..100);
         let switch_block_hash = BlockHash::random(rng);
 

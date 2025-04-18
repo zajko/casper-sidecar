@@ -1,6 +1,3 @@
-#![deny(clippy::complexity)]
-#![deny(clippy::too_many_lines)]
-
 extern crate core;
 mod admin_server;
 mod api_version_manager;
@@ -15,35 +12,38 @@ pub(crate) mod testing;
 pub(crate) mod tests;
 mod types;
 mod utils;
+
 use std::{collections::HashMap, path::Path, process::ExitCode, sync::Arc, time::Duration};
 
-use crate::types::config::LegacySseApiTag;
-use crate::{
-    event_stream_server::{Config as SseConfig, EventStreamServer},
-    rest_server::run_server as start_rest_server,
-    types::sse_events::*,
-};
 use anyhow::{Context, Error};
 use api_version_manager::{ApiVersionManager, GuardedApiVersionManager};
 use casper_event_listener::{
     EventListener, EventListenerBuilder, NodeConnectionInterface, SseEvent,
 };
-use casper_event_types::{sse_data::SseData, Filter, SidecarEvent};
+use casper_event_types::{Filter, SidecarEvent, sse_data::SseData};
 use casper_types::ProtocolVersion;
 use event_handling_service::{
     DbSavingEventHandlingService, EventHandlingService, NoDbEventHandlingService,
 };
 use futures::future::join_all;
-use tokio::sync::Mutex;
 use tokio::{
-    sync::broadcast::Sender as BroadcastSender,
-    sync::mpsc::{channel as mpsc_channel, Receiver, Sender},
+    sync::{
+        Mutex,
+        broadcast::Sender as BroadcastSender,
+        mpsc::{Receiver, Sender, channel as mpsc_channel},
+    },
     task::JoinHandle,
     time::sleep,
 };
 use tracing::{error, info};
 #[cfg(feature = "additional-metrics")]
 use utils::start_metrics_thread;
+
+use crate::{
+    event_stream_server::{Config as SseConfig, EventStreamServer},
+    rest_server::run_server as start_rest_server,
+    types::{config::LegacySseApiTag, sse_events::*},
+};
 
 pub use admin_server::run_server as run_admin_server;
 pub use database::DatabaseConfigError;
@@ -304,7 +304,7 @@ fn validate_config(config: &SseEventServerConfig) -> Result<(), Error> {
         .any(|connection| connection.max_attempts < 1)
     {
         return Err(Error::msg(
-            "Unable to run: max_attempts setting must be above 0 for the sidecar to attempt connection"
+            "Unable to run: max_attempts setting must be above 0 for the sidecar to attempt connection",
         ));
     }
     Ok(())
@@ -329,7 +329,9 @@ async fn handle_single_event<EHS: EventHandlingService + Send + Sync>(
 ) {
     match &sse_event.data {
         SseData::SidecarVersion(_) => {
-            error!("Received SseData::SidecarVersion on inbound SSE from the node which should never happen");
+            error!(
+                "Received SseData::SidecarVersion on inbound SSE from the node which should never happen"
+            );
             //Do nothing -> the inbound shouldn't produce this endpoint, it can be only produced by sidecar
             //to the outbound
         }

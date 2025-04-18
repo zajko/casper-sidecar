@@ -2,29 +2,29 @@
 
 mod auction_state;
 
-pub(crate) use auction_state::{JsonEraValidators, JsonValidatorWeight, ERA_VALIDATORS};
 use std::{
     collections::{BTreeMap, BTreeSet},
     str,
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
-use crate::node_client::{EntityResponse, PackageResponse};
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
+    ApiVersion, CURRENT_API_VERSION, Error, NodeClient, RpcError, RpcWithOptionalParams,
+    RpcWithParams,
     common::{
-        self, ByteCodeWithProof, ContractWasmWithProof, EntityWithBackwardCompat,
-        PackageWithBackwardCompat, MERKLE_PROOF,
+        self, ByteCodeWithProof, ContractWasmWithProof, EntityWithBackwardCompat, MERKLE_PROOF,
+        PackageWithBackwardCompat,
     },
-    docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
-    ApiVersion, Error, NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams,
-    CURRENT_API_VERSION,
+    docs::{DOCS_EXAMPLE_API_VERSION, DocExample},
 };
+use crate::node_client::{EntityResponse, PackageResponse};
+
 use auction_state::AuctionState;
+pub(crate) use auction_state::{ERA_VALIDATORS, JsonEraValidators, JsonValidatorWeight};
 use casper_binary_port::{
     DictionaryItemIdentifier, EntityIdentifier as PortEntityIdentifier,
     PackageIdentifier as PortPackageIdentifier, PurseIdentifier as PortPurseIdentifier,
@@ -32,26 +32,26 @@ use casper_binary_port::{
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
+    AddressableEntity, AddressableEntityHash, BlockHash, BlockHeader, BlockHeaderV2,
+    BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, EntityEntryPoint,
+    EntityVersions, EntryPointValue, EraId, GlobalStateIdentifier, Groups, Key, KeyTag, Package,
+    PackageHash, PackageStatus, PublicKey, SecretKey, StoredValue, U512, URef,
     account::{Account, AccountHash},
     addressable_entity::EntityKindTag,
     bytesrepr::Bytes,
     contracts::{ContractHash, ContractPackageHash},
     system::{
-        auction::{
-            BidKind, EraValidators, SeigniorageRecipientsV1, SeigniorageRecipientsV2,
-            ValidatorWeights, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        },
         AUCTION,
+        auction::{
+            BidKind, EraValidators, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SeigniorageRecipientsV1,
+            SeigniorageRecipientsV2, ValidatorWeights,
+        },
     },
-    AddressableEntity, AddressableEntityHash, BlockHash, BlockHeader, BlockHeaderV2,
-    BlockIdentifier, BlockTime, BlockV2, CLValue, Digest, EntityAddr, EntityEntryPoint,
-    EntityVersions, EntryPointValue, EraId, GlobalStateIdentifier, Groups, Key, KeyTag, Package,
-    PackageHash, PackageStatus, PublicKey, SecretKey, StoredValue, URef, U512,
 };
 #[cfg(test)]
 use rand::Rng;
 
-static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
+static GET_ITEM_PARAMS: LazyLock<GetItemParams> = LazyLock::new(|| GetItemParams {
     state_root_hash: *BlockHeaderV2::example().state_root_hash(),
     key: Key::from_formatted_str(
         "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
@@ -59,29 +59,31 @@ static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
     .unwrap(),
     path: vec!["inner".to_string()],
 });
-static GET_ITEM_RESULT: Lazy<GetItemResult> = Lazy::new(|| GetItemResult {
+static GET_ITEM_RESULT: LazyLock<GetItemResult> = LazyLock::new(|| GetItemResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
     merkle_proof: MERKLE_PROOF.into(),
 });
-static GET_BALANCE_PARAMS: Lazy<GetBalanceParams> = Lazy::new(|| GetBalanceParams {
+static GET_BALANCE_PARAMS: LazyLock<GetBalanceParams> = LazyLock::new(|| GetBalanceParams {
     state_root_hash: *BlockHeaderV2::example().state_root_hash(),
     purse_uref: "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
         .to_string(),
 });
-static GET_BALANCE_RESULT: Lazy<GetBalanceResult> = Lazy::new(|| GetBalanceResult {
+static GET_BALANCE_RESULT: LazyLock<GetBalanceResult> = LazyLock::new(|| GetBalanceResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     balance_value: U512::from(123_456),
     merkle_proof: MERKLE_PROOF.into(),
 });
-static GET_AUCTION_INFO_PARAMS: Lazy<GetAuctionInfoParams> = Lazy::new(|| GetAuctionInfoParams {
-    block_identifier: BlockIdentifier::Hash(*BlockHash::example()),
-});
-static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuctionInfoResult {
-    api_version: DOCS_EXAMPLE_API_VERSION,
-    auction_state: AuctionState::doc_example().clone(),
-});
-static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
+static GET_AUCTION_INFO_PARAMS: LazyLock<GetAuctionInfoParams> =
+    LazyLock::new(|| GetAuctionInfoParams {
+        block_identifier: BlockIdentifier::Hash(*BlockHash::example()),
+    });
+static GET_AUCTION_INFO_RESULT: LazyLock<GetAuctionInfoResult> =
+    LazyLock::new(|| GetAuctionInfoResult {
+        api_version: DOCS_EXAMPLE_API_VERSION,
+        auction_state: AuctionState::doc_example().clone(),
+    });
+static GET_ACCOUNT_INFO_PARAMS: LazyLock<GetAccountInfoParams> = LazyLock::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
     let public_key = PublicKey::from(&secret_key);
     GetAccountInfoParams {
@@ -89,19 +91,20 @@ static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
         block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
     }
 });
-static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAccountInfoResult {
-    api_version: DOCS_EXAMPLE_API_VERSION,
-    account: Account::doc_example().clone(),
-    merkle_proof: MERKLE_PROOF.into(),
-});
-static GET_ADDRESSABLE_ENTITY_PARAMS: Lazy<GetAddressableEntityParams> =
-    Lazy::new(|| GetAddressableEntityParams {
+static GET_ACCOUNT_INFO_RESULT: LazyLock<GetAccountInfoResult> =
+    LazyLock::new(|| GetAccountInfoResult {
+        api_version: DOCS_EXAMPLE_API_VERSION,
+        account: Account::doc_example().clone(),
+        merkle_proof: MERKLE_PROOF.into(),
+    });
+static GET_ADDRESSABLE_ENTITY_PARAMS: LazyLock<GetAddressableEntityParams> =
+    LazyLock::new(|| GetAddressableEntityParams {
         entity_identifier: EntityIdentifier::EntityAddr(EntityAddr::new_account([0; 32])),
         block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
         include_bytecode: None,
     });
-static GET_ADDRESSABLE_ENTITY_RESULT: Lazy<GetAddressableEntityResult> =
-    Lazy::new(|| GetAddressableEntityResult {
+static GET_ADDRESSABLE_ENTITY_RESULT: LazyLock<GetAddressableEntityResult> =
+    LazyLock::new(|| GetAddressableEntityResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         merkle_proof: MERKLE_PROOF.into(),
         entity: EntityWithBackwardCompat::AddressableEntity {
@@ -117,11 +120,11 @@ static GET_ADDRESSABLE_ENTITY_RESULT: Lazy<GetAddressableEntityResult> =
             bytecode: None,
         },
     });
-static GET_PACKAGE_PARAMS: Lazy<GetPackageParams> = Lazy::new(|| GetPackageParams {
+static GET_PACKAGE_PARAMS: LazyLock<GetPackageParams> = LazyLock::new(|| GetPackageParams {
     package_identifier: PackageIdentifier::ContractPackageHash(ContractPackageHash::new([0; 32])),
     block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
 });
-static GET_PACKAGE_RESULT: Lazy<GetPackageResult> = Lazy::new(|| GetPackageResult {
+static GET_PACKAGE_RESULT: LazyLock<GetPackageResult> = LazyLock::new(|| GetPackageResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     package: PackageWithBackwardCompat::Package(
         Package::new(
@@ -134,8 +137,8 @@ static GET_PACKAGE_RESULT: Lazy<GetPackageResult> = Lazy::new(|| GetPackageResul
     ),
     merkle_proof: MERKLE_PROOF.into(),
 });
-static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
-    Lazy::new(|| GetDictionaryItemParams {
+static GET_DICTIONARY_ITEM_PARAMS: LazyLock<GetDictionaryItemParams> =
+    LazyLock::new(|| GetDictionaryItemParams {
         state_root_hash: *BlockHeaderV2::example().state_root_hash(),
         dictionary_identifier: DictionaryIdentifier::URef {
             seed_uref: "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
@@ -143,8 +146,8 @@ static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
             dictionary_item_key: "a_unique_entry_identifier".to_string(),
         },
     });
-static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
-    Lazy::new(|| GetDictionaryItemResult {
+static GET_DICTIONARY_ITEM_RESULT: LazyLock<GetDictionaryItemResult> =
+    LazyLock::new(|| GetDictionaryItemResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         dictionary_key:
             "dictionary-67518854aa916c97d4e53df8570c8217ccc259da2721b692102d76acd0ee8d1f"
@@ -152,8 +155,8 @@ static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
         stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
         merkle_proof: MERKLE_PROOF.into(),
     });
-static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
-    Lazy::new(|| QueryGlobalStateParams {
+static QUERY_GLOBAL_STATE_PARAMS: LazyLock<QueryGlobalStateParams> =
+    LazyLock::new(|| QueryGlobalStateParams {
         state_identifier: Some(GlobalStateIdentifier::BlockHash(*BlockV2::example().hash())),
         key: Key::from_formatted_str(
             "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
@@ -161,35 +164,35 @@ static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
         .unwrap(),
         path: vec![],
     });
-static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
-    Lazy::new(|| QueryGlobalStateResult {
+static QUERY_GLOBAL_STATE_RESULT: LazyLock<QueryGlobalStateResult> =
+    LazyLock::new(|| QueryGlobalStateResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         block_header: Some(BlockHeaderV2::example().clone().into()),
         stored_value: StoredValue::Account(Account::doc_example().clone()),
         merkle_proof: MERKLE_PROOF.into(),
     });
-static GET_TRIE_PARAMS: Lazy<GetTrieParams> = Lazy::new(|| GetTrieParams {
+static GET_TRIE_PARAMS: LazyLock<GetTrieParams> = LazyLock::new(|| GetTrieParams {
     trie_key: *BlockHeaderV2::example().state_root_hash(),
 });
-static GET_TRIE_RESULT: Lazy<GetTrieResult> = Lazy::new(|| GetTrieResult {
+static GET_TRIE_RESULT: LazyLock<GetTrieResult> = LazyLock::new(|| GetTrieResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     maybe_trie_bytes: None,
 });
-static QUERY_BALANCE_PARAMS: Lazy<QueryBalanceParams> = Lazy::new(|| QueryBalanceParams {
+static QUERY_BALANCE_PARAMS: LazyLock<QueryBalanceParams> = LazyLock::new(|| QueryBalanceParams {
     state_identifier: Some(GlobalStateIdentifier::BlockHash(*BlockHash::example())),
     purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
 });
-static QUERY_BALANCE_RESULT: Lazy<QueryBalanceResult> = Lazy::new(|| QueryBalanceResult {
+static QUERY_BALANCE_RESULT: LazyLock<QueryBalanceResult> = LazyLock::new(|| QueryBalanceResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     balance: U512::from(123_456),
 });
-static QUERY_BALANCE_DETAILS_PARAMS: Lazy<QueryBalanceDetailsParams> =
-    Lazy::new(|| QueryBalanceDetailsParams {
+static QUERY_BALANCE_DETAILS_PARAMS: LazyLock<QueryBalanceDetailsParams> =
+    LazyLock::new(|| QueryBalanceDetailsParams {
         state_identifier: Some(GlobalStateIdentifier::BlockHash(*BlockHash::example())),
         purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
     });
-static QUERY_BALANCE_DETAILS_RESULT: Lazy<QueryBalanceDetailsResult> =
-    Lazy::new(|| QueryBalanceDetailsResult {
+static QUERY_BALANCE_DETAILS_RESULT: LazyLock<QueryBalanceDetailsResult> =
+    LazyLock::new(|| QueryBalanceDetailsResult {
         api_version: DOCS_EXAMPLE_API_VERSION,
         total_balance: U512::from(123_456),
         available_balance: U512::from(123_456),
@@ -482,7 +485,7 @@ impl AccountIdentifier {
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..2) {
             0 => AccountIdentifier::PublicKey(PublicKey::random(rng)),
-            1 => AccountIdentifier::AccountHash(rng.gen()),
+            1 => AccountIdentifier::AccountHash(rng.r#gen()),
             _ => unreachable!(),
         }
     }
@@ -582,8 +585,8 @@ impl EntityIdentifier {
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..3) {
             0 => EntityIdentifier::PublicKey(PublicKey::random(rng)),
-            1 => EntityIdentifier::AccountHash(rng.gen()),
-            2 => EntityIdentifier::EntityAddr(rng.gen()),
+            1 => EntityIdentifier::AccountHash(rng.r#gen()),
+            2 => EntityIdentifier::EntityAddr(rng.r#gen()),
             _ => unreachable!(),
         }
     }
@@ -729,8 +732,8 @@ impl PackageIdentifier {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..2) {
-            0 => Self::PackageAddr(PackageHash::new(rng.gen())),
-            1 => Self::ContractPackageHash(ContractPackageHash::new(rng.gen())),
+            0 => Self::PackageAddr(PackageHash::new(rng.r#gen())),
+            1 => Self::ContractPackageHash(ContractPackageHash::new(rng.r#gen())),
             _ => unreachable!(),
         }
     }
@@ -1363,7 +1366,7 @@ mod tests {
         },
     };
 
-    use crate::{rpcs::ErrorCode, ClientError};
+    use crate::{ClientError, rpcs::ErrorCode};
     use casper_binary_port::{
         AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryResponse,
         BinaryResponseAndRequest, Command, ContractInformation, DictionaryQueryResult,
@@ -1371,6 +1374,9 @@ mod tests {
         GlobalStateQueryResult, InformationRequestTag, KeyPrefix, ValueWithProof,
     };
     use casper_types::{
+        AccessRights, AddressableEntity, AvailableBlockRange, Block, ByteCode, ByteCodeHash,
+        ByteCodeKind, Contract, ContractRuntimeTag, ContractWasm, ContractWasmHash, EntityKind,
+        NamedKeys, PackageHash, ProtocolVersion, TestBlockBuilder,
         addressable_entity::NamedKeyValue,
         contracts::ContractPackage,
         global_state::{TrieMerkleProof, TrieMerkleProofStep},
@@ -1379,9 +1385,6 @@ mod tests {
             ValidatorBid,
         },
         testing::TestRng,
-        AccessRights, AddressableEntity, AvailableBlockRange, Block, ByteCode, ByteCodeHash,
-        ByteCodeKind, Contract, ContractRuntimeTag, ContractWasm, ContractWasmHash, EntityKind,
-        NamedKeys, PackageHash, ProtocolVersion, TestBlockBuilder,
     };
     use pretty_assertions::assert_eq;
     use rand::Rng;
@@ -1391,8 +1394,8 @@ mod tests {
     #[tokio::test]
     async fn should_read_state_item() {
         let rng = &mut TestRng::new();
-        let key = rng.gen::<Key>();
-        let stored_value = StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap());
+        let key = rng.r#gen::<Key>();
+        let stored_value = StoredValue::CLValue(CLValue::from_t(rng.r#gen::<i32>()).unwrap());
         let merkle_proof = vec![TrieMerkleProof::new(
             key,
             stored_value.clone(),
@@ -1403,7 +1406,7 @@ mod tests {
         let resp = GetItem::do_handle_request(
             Arc::new(ValidGlobalStateResultMock(expected.clone())),
             GetItemParams {
-                state_root_hash: rng.gen(),
+                state_root_hash: rng.r#gen(),
                 key,
                 path: vec![],
             },
@@ -1424,14 +1427,14 @@ mod tests {
     #[tokio::test]
     async fn should_read_balance() {
         let rng = &mut TestRng::new();
-        let available_balance = rng.gen();
-        let total_balance = rng.gen();
+        let available_balance = rng.r#gen();
+        let total_balance = rng.r#gen();
         let balance = BalanceResponse {
             total_balance,
             available_balance,
             total_balance_proof: Box::new(TrieMerkleProof::new(
-                Key::Account(rng.gen()),
-                StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap()),
+                Key::Account(rng.r#gen()),
+                StoredValue::CLValue(CLValue::from_t(rng.r#gen::<i32>()).unwrap()),
                 VecDeque::from_iter([TrieMerkleProofStep::random(rng)]),
             )),
             balance_holds: BTreeMap::new(),
@@ -1440,8 +1443,8 @@ mod tests {
         let resp = GetBalance::do_handle_request(
             Arc::new(ValidBalanceMock(balance.clone())),
             GetBalanceParams {
-                state_root_hash: rng.gen(),
-                purse_uref: URef::new(rng.gen(), AccessRights::empty()).to_formatted_string(),
+                state_root_hash: rng.r#gen(),
+                purse_uref: URef::new(rng.r#gen(), AccessRights::empty()).to_formatted_string(),
             },
         )
         .await
@@ -1465,8 +1468,8 @@ mod tests {
         let err = GetBalance::do_handle_request(
             Arc::new(BalancePurseNotFoundMock),
             GetBalanceParams {
-                state_root_hash: rng.gen(),
-                purse_uref: URef::new(rng.gen(), AccessRights::empty()).to_formatted_string(),
+                state_root_hash: rng.r#gen(),
+                purse_uref: URef::new(rng.r#gen(), AccessRights::empty()).to_formatted_string(),
             },
         )
         .await
@@ -1601,15 +1604,16 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let block = TestBlockBuilder::new().build(rng);
-        let bid = BidKind::Validator(ValidatorBid::empty(PublicKey::random(rng), rng.gen()).into());
-        let legacy_bid = Bid::empty(PublicKey::random(rng), rng.gen());
+        let bid =
+            BidKind::Validator(ValidatorBid::empty(PublicKey::random(rng), rng.r#gen()).into());
+        let legacy_bid = Bid::empty(PublicKey::random(rng), rng.r#gen());
 
         let resp = GetAuctionInfo::do_handle_request(
             Arc::new(ClientMock {
                 block: Block::V2(block.clone()),
                 bids: vec![bid.clone()],
                 legacy_bids: vec![legacy_bid.clone()],
-                contract_hash: rng.gen(),
+                contract_hash: rng.r#gen(),
                 snapshot: Default::default(),
             }),
             None,
@@ -1777,15 +1781,16 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let block = TestBlockBuilder::new().build(rng);
-        let bid = BidKind::Validator(ValidatorBid::empty(PublicKey::random(rng), rng.gen()).into());
-        let legacy_bid = Bid::empty(PublicKey::random(rng), rng.gen());
+        let bid =
+            BidKind::Validator(ValidatorBid::empty(PublicKey::random(rng), rng.r#gen()).into());
+        let legacy_bid = Bid::empty(PublicKey::random(rng), rng.r#gen());
 
         let resp = GetAuctionInfo::do_handle_request(
             Arc::new(ClientMock {
                 block: Block::V2(block.clone()),
                 bids: vec![bid.clone()],
                 legacy_bids: vec![legacy_bid.clone()],
-                contract_hash: rng.gen(),
+                contract_hash: rng.r#gen(),
                 snapshot: Default::default(),
             }),
             None,
@@ -1947,19 +1952,19 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let entity = AddressableEntity::new(
-            PackageHash::new(rng.gen()),
-            ByteCodeHash::new(rng.gen()),
+            PackageHash::new(rng.r#gen()),
+            ByteCodeHash::new(rng.r#gen()),
             ProtocolVersion::V1_0_0,
-            rng.gen(),
+            rng.r#gen(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
             EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2),
         );
-        let addr: EntityAddr = rng.gen();
+        let addr: EntityAddr = rng.r#gen();
 
         let named_key_count = rng.gen_range(0..10);
         let named_keys: NamedKeys =
-            iter::repeat_with(|| (rng.random_string(1..36), Key::Hash(rng.gen())))
+            iter::repeat_with(|| (rng.random_string(1..36), Key::Hash(rng.r#gen())))
                 .take(named_key_count)
                 .collect::<BTreeMap<_, _>>()
                 .into();
@@ -1973,7 +1978,7 @@ mod tests {
         .collect::<Vec<_>>();
 
         let bytecode = rng
-            .gen::<bool>()
+            .r#gen::<bool>()
             .then(|| ByteCode::new(ByteCodeKind::V1CasperWasm, rng.random_vec(10..50)));
 
         let entity_identifier = EntityIdentifier::random(rng);
@@ -2017,13 +2022,13 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let account = Account::new(
-            rng.gen(),
+            rng.r#gen(),
             NamedKeys::default(),
-            rng.gen(),
+            rng.r#gen(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
         );
-        let entity_identifier = EntityIdentifier::AccountHash(rng.gen());
+        let entity_identifier = EntityIdentifier::AccountHash(rng.r#gen());
 
         let resp = GetAddressableEntity::do_handle_request(
             Arc::new(ValidLegacyAccountMock {
@@ -2085,16 +2090,16 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let contract = Contract::new(
-            ContractPackageHash::new(rng.gen()),
-            ContractWasmHash::new(rng.gen()),
+            ContractPackageHash::new(rng.r#gen()),
+            ContractWasmHash::new(rng.r#gen()),
             Default::default(),
             Default::default(),
             ProtocolVersion::V2_0_0,
         );
-        let hash = ContractHash::new(rng.gen());
+        let hash = ContractHash::new(rng.r#gen());
 
         let wasm = rng
-            .gen::<bool>()
+            .r#gen::<bool>()
             .then(|| ContractWasm::new(rng.random_vec(10..50)));
 
         let entity_identifier = EntityIdentifier::random(rng);
@@ -2154,7 +2159,7 @@ mod tests {
         }
 
         let rng = &mut TestRng::new();
-        let entity_identifier = EntityIdentifier::EntityAddr(rng.gen());
+        let entity_identifier = EntityIdentifier::EntityAddr(rng.r#gen());
 
         let err = GetAddressableEntity::do_handle_request(
             Arc::new(ClientMock),
@@ -2264,7 +2269,7 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let package = ContractPackage::new(
-            rng.gen(),
+            rng.r#gen(),
             Default::default(),
             Default::default(),
             Default::default(),
@@ -2301,9 +2306,9 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let account = Account::new(
-            rng.gen(),
+            rng.r#gen(),
             NamedKeys::default(),
-            rng.gen(),
+            rng.r#gen(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
         );
@@ -2381,7 +2386,7 @@ mod tests {
 
         let rng = &mut TestRng::new();
         let block = Block::V2(TestBlockBuilder::new().build(rng));
-        let entity_hash: AddressableEntityHash = rng.gen();
+        let entity_hash: AddressableEntityHash = rng.r#gen();
         let account_identifier = AccountIdentifier::random(rng);
 
         let err = GetAccountInfo::do_handle_request(
@@ -2463,9 +2468,9 @@ mod tests {
     #[tokio::test]
     async fn should_read_dictionary_item() {
         let rng = &mut TestRng::new();
-        let stored_value = StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap());
+        let stored_value = StoredValue::CLValue(CLValue::from_t(rng.r#gen::<i32>()).unwrap());
 
-        let uref = URef::new(rng.gen(), AccessRights::empty());
+        let uref = URef::new(rng.r#gen(), AccessRights::empty());
         let item_key = rng.random_string(5..10);
         let query_result = GlobalStateQueryResult::new(stored_value.clone(), vec![]);
         let dict_key = Key::dictionary(uref, item_key.as_bytes());
@@ -2476,7 +2481,7 @@ mod tests {
                 query_result,
             }),
             GetDictionaryItemParams {
-                state_root_hash: rng.gen(),
+                state_root_hash: rng.r#gen(),
                 dictionary_identifier: DictionaryIdentifier::URef {
                     seed_uref: uref.to_formatted_string(),
                     dictionary_item_key: item_key.clone(),
@@ -2501,7 +2506,7 @@ mod tests {
     async fn should_read_query_global_state_result() {
         let rng = &mut TestRng::new();
         let block = Block::V2(TestBlockBuilder::new().build(rng));
-        let stored_value = StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap());
+        let stored_value = StoredValue::CLValue(CLValue::from_t(rng.r#gen::<i32>()).unwrap());
         let expected = GlobalStateQueryResult::new(stored_value.clone(), vec![]);
 
         let resp = QueryGlobalState::do_handle_request(
@@ -2511,7 +2516,7 @@ mod tests {
             }),
             QueryGlobalStateParams {
                 state_identifier: Some(GlobalStateIdentifier::BlockHash(*block.hash())),
-                key: rng.gen(),
+                key: rng.r#gen(),
                 path: vec![],
             },
         )
@@ -2532,14 +2537,14 @@ mod tests {
     #[tokio::test]
     async fn should_read_query_balance_result() {
         let rng = &mut TestRng::new();
-        let available_balance = rng.gen();
-        let total_balance = rng.gen();
+        let available_balance = rng.r#gen();
+        let total_balance = rng.r#gen();
         let balance = BalanceResponse {
             total_balance,
             available_balance,
             total_balance_proof: Box::new(TrieMerkleProof::new(
-                Key::Account(rng.gen()),
-                StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap()),
+                Key::Account(rng.r#gen()),
+                StoredValue::CLValue(CLValue::from_t(rng.r#gen::<i32>()).unwrap()),
                 VecDeque::from_iter([TrieMerkleProofStep::random(rng)]),
             )),
             balance_holds: BTreeMap::new(),
@@ -2550,7 +2555,7 @@ mod tests {
             QueryBalanceParams {
                 state_identifier: Some(GlobalStateIdentifier::random(rng)),
                 purse_identifier: PurseIdentifier::PurseUref(URef::new(
-                    rng.gen(),
+                    rng.r#gen(),
                     AccessRights::empty(),
                 )),
             },
@@ -2570,14 +2575,14 @@ mod tests {
     #[tokio::test]
     async fn should_read_query_balance_details_result() {
         let rng = &mut TestRng::new();
-        let available_balance = rng.gen();
-        let total_balance = rng.gen();
+        let available_balance = rng.r#gen();
+        let total_balance = rng.r#gen();
         let balance = BalanceResponse {
             total_balance,
             available_balance,
             total_balance_proof: Box::new(TrieMerkleProof::new(
-                Key::Account(rng.gen()),
-                StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap()),
+                Key::Account(rng.r#gen()),
+                StoredValue::CLValue(CLValue::from_t(rng.r#gen::<i32>()).unwrap()),
                 VecDeque::from_iter([TrieMerkleProofStep::random(rng)]),
             )),
             balance_holds: BTreeMap::new(),
@@ -2588,7 +2593,7 @@ mod tests {
             QueryBalanceDetailsParams {
                 state_identifier: Some(GlobalStateIdentifier::random(rng)),
                 purse_identifier: PurseIdentifier::PurseUref(URef::new(
-                    rng.gen(),
+                    rng.r#gen(),
                     AccessRights::empty(),
                 )),
             },

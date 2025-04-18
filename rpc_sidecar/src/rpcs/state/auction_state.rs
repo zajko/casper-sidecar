@@ -1,20 +1,22 @@
-use std::collections::{btree_map::Entry, BTreeMap};
+use std::{
+    collections::{BTreeMap, btree_map::Entry},
+    sync::LazyLock,
+};
 
-use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_map_to_array::{BTreeMapToArray, KeyValueJsonSchema, KeyValueLabels};
 
 use casper_types::{
+    Digest, EraId, PublicKey, U512,
     system::auction::{
         Bid, BidKind, DelegatorBid, DelegatorKind, EraValidators, Staking, ValidatorBid,
     },
-    Digest, EraId, PublicKey, U512,
 };
 
 use crate::rpcs::docs::DocExample;
 
-pub(crate) static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
+pub(crate) static ERA_VALIDATORS: LazyLock<EraValidators> = LazyLock::new(|| {
     use casper_types::SecretKey;
 
     let secret_key_1 = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
@@ -29,8 +31,8 @@ pub(crate) static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
     era_validators
 });
 
-static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
-    use casper_types::{system::auction::DelegationRate, AccessRights, SecretKey, URef};
+static AUCTION_INFO: LazyLock<AuctionState> = LazyLock::new(|| {
+    use casper_types::{AccessRights, SecretKey, URef, system::auction::DelegationRate};
     use num_traits::Zero;
 
     let state_root_hash = Digest::from([11; Digest::LENGTH]);

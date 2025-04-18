@@ -2,7 +2,7 @@
 name = "casper-rpc-sidecar"
 version = "1.0.4"
 authors = ["Jacek Malec <jacek@casperlabs.io>"]
-edition = "2018"
+edition = "2024"
 description = "The Casper blockchain RPC sidecard"
 documentation = "https://docs.rs/casper-rpc-sidecar"
 readme = "README.md"
@@ -28,7 +28,6 @@ http = "0.2"
 hyper = "0.14"
 metrics = { workspace = true }
 num-traits = { version = "0.2", default-features = false }
-once_cell.workspace = true
 portpicker = "0.1"
 rand = { workspace = true }
 schemars = { version = "0.8", features = [
@@ -60,7 +59,7 @@ jsonschema = { workspace = true }
 
 [build-dependencies]
 anyhow = { workspace = true }
-vergen = { version = "9", features = ["build", "cargo", "rustc"]}
+vergen = { version = "9", features = ["build", "cargo", "rustc"] }
 vergen-gitcl = { version = "1.0.0", features = ["build", "cargo", "rustc"] }
 
 [features]

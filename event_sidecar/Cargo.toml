@@ -5,7 +5,7 @@ authors = [
     "Jakub Zajkowski <jakub@casperlabs.io>",
 ]
 version = "1.0.4"
-edition = "2018"
+edition = "2024"
 readme = "README.md"
 description = "App for storing and republishing sse events of a casper node"
 license-file = "../LICENSE"
@@ -68,11 +68,10 @@ casper-event-types = { workspace = true, features = ["sse-data-testing"] }
 casper-types = { workspace = true, features = ["testing"] }
 colored = "2.0"
 futures-util = { workspace = true }
-once_cell = { workspace = true }
 pg-embed = { git = "https://github.com/faokunega/pg-embed", tag = "v0.9.0" }
 portpicker = "0.1"
 pretty_assertions = "1"
 reqwest = { version = "0.12", features = ["stream"] }
 tabled = { version = "0.18", features = ["derive"] }
 tempfile = "3"
-tokio-util = "0.6"
+tokio-util = "0.7"
