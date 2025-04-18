@@ -1,21 +1,21 @@
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
 use super::{
     docs::{
-        OpenRpcInfoField, OpenRpcSchema, OpenRpcServerEntry, CONTACT, DOCS_EXAMPLE_API_VERSION,
-        LICENSE, OPEN_RPC_VERSION,
+        CONTACT, DOCS_EXAMPLE_API_VERSION, LICENSE, OPEN_RPC_VERSION, OpenRpcInfoField,
+        OpenRpcSchema, OpenRpcServerEntry,
     },
     speculative_exec::{SpeculativeExec, SpeculativeExecTxn},
 };
 
-pub(crate) static SERVER: Lazy<OpenRpcServerEntry> = Lazy::new(|| {
+pub(crate) static SERVER: LazyLock<OpenRpcServerEntry> = LazyLock::new(|| {
     OpenRpcServerEntry::new(
         "any Sidecar with speculative JSON RPC API enabled".to_string(),
         "http://IP:PORT/rpc/".to_string(),
     )
 });
 
-pub(crate) static SPECULATIVE_OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
+pub(crate) static SPECULATIVE_OPEN_RPC_SCHEMA: LazyLock<OpenRpcSchema> = LazyLock::new(|| {
     let info = OpenRpcInfoField::new(
         DOCS_EXAMPLE_API_VERSION.to_string(),
         "Speculative execution client API of Casper Node".to_string(),
