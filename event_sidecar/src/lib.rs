@@ -62,15 +62,24 @@ pub async fn run(
     index_storage_folder: String,
     maybe_database: Option<Database>,
     maybe_network_name: Option<String>,
-    sidecar_event_sender: Option<BroadcastSender<SidecarEvent>>,
+    sidecar_event_sender: BroadcastSender<SidecarEvent>,
+    prefetch_blocks_enabled: bool,
 ) -> Result<ExitCode, Error> {
     validate_config(&config)?;
-    let (event_listeners, sse_data_receivers) = build_event_listeners(&config, maybe_network_name)?;
+    let (event_listeners, sse_data_receivers) =
+        build_event_listeners(&config, maybe_network_name, sidecar_event_sender.clone())?;
     // This channel allows SseData to be sent from multiple connected nodes to the single EventStreamServer.
     let (outbound_sse_data_sender, outbound_sse_data_receiver) =
         mpsc_channel(config.outbound_channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE));
     let connection_configs = config.connections.clone();
 
+    let sidecar_event_sender = if prefetch_blocks_enabled {
+        Some(sidecar_event_sender)
+    } else {
+        //We don't pass the bus handle to sse processor if we don't enable prefetch.
+        // This is added as an optimisation to not spam the bus with events that are not handled anywhere
+        None
+    };
     // Task to manage incoming events from all three filters
     let listening_task_handle = start_sse_processors(
         connection_configs,
@@ -245,6 +254,7 @@ pub async fn run_rest_server(
 fn build_event_listeners(
     config: &SseEventServerConfig,
     maybe_network_name: Option<String>,
+    sidecar_event_sender: BroadcastSender<SidecarEvent>,
 ) -> Result<(Vec<EventListener>, Vec<Receiver<SseEvent>>), Error> {
     let mut event_listeners = Vec::with_capacity(config.connections.len());
     let mut sse_data_receivers = Vec::new();
@@ -256,6 +266,7 @@ fn build_event_listeners(
             connection,
             inbound_sse_data_sender,
             maybe_network_name.clone(),
+            sidecar_event_sender.clone(),
         )?
         .build();
         event_listeners.push(event_listener?);
@@ -267,6 +278,7 @@ fn builder(
     connection: &Connection,
     inbound_sse_data_sender: Sender<SseEvent>,
     maybe_network_name: Option<String>,
+    sidecar_event_sender: BroadcastSender<SidecarEvent>,
 ) -> Result<EventListenerBuilder, Error> {
     let node_interface = NodeConnectionInterface {
         ip_address: connection.ip_address,
@@ -293,6 +305,7 @@ fn builder(
         no_message_timeout: Duration::from_secs(
             connection.no_message_timeout_in_seconds.unwrap_or(120) as u64,
         ),
+        sidecar_event_sender,
     };
     Ok(event_listener_builder)
 }
@@ -328,13 +341,6 @@ async fn handle_single_event<EHS: EventHandlingService + Send + Sync>(
     api_version_manager: GuardedApiVersionManager,
 ) {
     match &sse_event.data {
-        SseData::SidecarVersion(_) => {
-            error!(
-                "Received SseData::SidecarVersion on inbound SSE from the node which should never happen"
-            );
-            //Do nothing -> the inbound shouldn't produce this endpoint, it can be only produced by sidecar
-            //to the outbound
-        }
         SseData::ApiVersion(version) => {
             handle_api_version(
                 version,

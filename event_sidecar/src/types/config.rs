@@ -40,27 +40,25 @@ pub struct SseEventServerConfig {
 }
 
 #[cfg(any(feature = "testing", test))]
-impl Default for SseEventServerConfig {
-    fn default() -> Self {
-        Self {
-            enable_server: true,
-            emulate_legacy_sse_apis: Some(vec![LegacySseApiTag::V1]),
-            inbound_channel_size: Some(100),
-            outbound_channel_size: Some(100),
-            connections: Vec::new(),
-            event_stream_server: EventStreamServerConfig::default(),
-            disable_event_persistence: false,
-        }
-    }
-}
-
 impl SseEventServerConfig {
     #[cfg(any(feature = "testing", test))]
     #[must_use]
     pub fn default_no_persistence() -> Self {
         Self {
             disable_event_persistence: true,
-            ..Default::default()
+            ..Self::test_default()
+        }
+    }
+
+    pub fn test_default() -> Self {
+        Self {
+            enable_server: true,
+            emulate_legacy_sse_apis: Some(vec![LegacySseApiTag::V1]),
+            inbound_channel_size: Some(100),
+            outbound_channel_size: Some(100),
+            connections: Vec::new(),
+            event_stream_server: EventStreamServerConfig::test_default(),
+            disable_event_persistence: false,
         }
     }
 }
@@ -80,7 +78,6 @@ pub struct Connection {
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
-#[cfg_attr(not(any(feature = "testing", test)), derive(Default))]
 pub struct StorageConfig {
     pub storage_folder: String,
     pub sqlite_config: Option<SqliteConfig>,
@@ -116,8 +113,8 @@ impl StorageConfig {
     pub fn two_dbs() -> Self {
         StorageConfig {
             storage_folder: "abc".to_string(),
-            sqlite_config: Some(SqliteConfig::default()),
-            postgresql_config: Some(PostgresqlConfig::default()),
+            sqlite_config: Some(SqliteConfig::test_default()),
+            postgresql_config: Some(PostgresqlConfig::test_default()),
         }
     }
 
@@ -154,11 +151,11 @@ impl StorageConfig {
     pub fn no_enabled_dbs() -> Self {
         let sqlite_config = SqliteConfig {
             enabled: false,
-            ..Default::default()
+            ..SqliteConfig::test_default()
         };
         let postgresql_config = PostgresqlConfig {
             enabled: false,
-            ..Default::default()
+            ..PostgresqlConfig::test_default()
         };
         Self {
             storage_folder: "storage".to_string(),
@@ -180,6 +177,15 @@ impl StorageConfig {
             .as_ref()
             .is_some_and(|config| config.enabled)
     }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn test_default() -> Self {
+        StorageConfig {
+            storage_folder: "abc".to_string(),
+            sqlite_config: Some(SqliteConfig::test_default()),
+            postgresql_config: None,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
@@ -189,23 +195,13 @@ pub struct StorageConfigSerdeTarget {
     postgresql_config: Option<PostgresqlConfigSerdeTarget>,
 }
 
-impl Default for StorageConfigSerdeTarget {
-    fn default() -> Self {
-        Self {
-            storage_folder: "storage".to_string(),
-            sqlite_config: None,
-            postgresql_config: Some(PostgresqlConfigSerdeTarget::default()),
-        }
-    }
-}
-
 impl TryFrom<StorageConfigSerdeTarget> for StorageConfig {
     type Error = DatabaseConfigError;
 
     fn try_from(value: StorageConfigSerdeTarget) -> Result<Self, Self::Error> {
         let mut storage_config = Self {
             storage_folder: value.storage_folder,
-            ..Default::default()
+            ..Self::test_default()
         };
         if let Some(config) = value.sqlite_config {
             storage_config.sqlite_config = Some(config);
@@ -236,9 +232,8 @@ pub struct PostgresqlConfig {
     pub port: u16,
 }
 
-#[cfg(any(feature = "testing", test))]
-impl Default for PostgresqlConfig {
-    fn default() -> Self {
+impl PostgresqlConfig {
+    pub fn test_default() -> Self {
         Self {
             enabled: true,
             host: "localhost".to_string(),
@@ -251,7 +246,7 @@ impl Default for PostgresqlConfig {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct PostgresqlConfigSerdeTarget {
     pub enabled: bool,
     pub host: Option<String>,
@@ -336,8 +331,8 @@ pub struct AdminApiServerConfig {
 }
 
 #[cfg(any(feature = "testing", test))]
-impl Default for AdminApiServerConfig {
-    fn default() -> Self {
+impl AdminApiServerConfig {
+    pub fn test_default() -> Self {
         Self {
             enable_server: true,
             port: 1211,
@@ -401,10 +396,8 @@ mod tests {
                 no_message_timeout_in_seconds: None,
             }
         }
-    }
 
-    impl Default for Connection {
-        fn default() -> Self {
+        pub fn test_default() -> Self {
             Self {
                 ip_address: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
                 sse_port: 18101,
@@ -420,18 +413,8 @@ mod tests {
         }
     }
 
-    impl Default for StorageConfig {
-        fn default() -> Self {
-            StorageConfig {
-                storage_folder: "abc".to_string(),
-                sqlite_config: Some(SqliteConfig::default()),
-                postgresql_config: None,
-            }
-        }
-    }
-
-    impl Default for SqliteConfig {
-        fn default() -> Self {
+    impl SqliteConfig {
+        pub fn test_default() -> Self {
             Self {
                 enabled: true,
                 file_name: "test_sqlite_database".to_string(),
@@ -441,8 +424,8 @@ mod tests {
         }
     }
 
-    impl Default for RestApiServerConfig {
-        fn default() -> Self {
+    impl RestApiServerConfig {
+        pub fn test_default() -> Self {
             Self {
                 enable_server: true,
                 port: 17777,
@@ -452,8 +435,8 @@ mod tests {
         }
     }
 
-    impl Default for EventStreamServerConfig {
-        fn default() -> Self {
+    impl EventStreamServerConfig {
+        pub fn test_default() -> Self {
             Self {
                 port: 19999,
                 max_concurrent_subscribers: 100,

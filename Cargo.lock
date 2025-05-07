@@ -487,6 +487,7 @@ dependencies = [
  "hex",
  "hex_fmt",
  "http 0.2.12",
+ "humantime",
  "hyper 0.14.32",
  "itertools 0.14.0",
  "metrics",
@@ -511,6 +512,8 @@ dependencies = [
  "tower 0.4.13",
  "tracing",
  "utoipa",
+ "vergen",
+ "vergen-gitcl",
  "warp",
  "wheelbuf",
 ]

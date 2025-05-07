@@ -26,4 +26,5 @@ pub static SIDECAR_VERSION: LazyLock<ProtocolVersion> = LazyLock::new(|| {
 #[derive(Debug, Clone)]
 pub enum SidecarEvent {
     BlockAdded { block_hash: BlockHash, height: u64 },
+    SseNodeConnectionStatusChange { connection: String, status: String },
 }

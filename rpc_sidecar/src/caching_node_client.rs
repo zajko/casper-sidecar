@@ -112,6 +112,7 @@ pub(crate) async fn cache_update_loop<T: NodeClient + Send + Sync>(
                         }
                     }
                 }
+                SidecarEvent::SseNodeConnectionStatusChange { .. } => (),
             },
             Err(x) => match x {
                 tokio::sync::broadcast::error::RecvError::Closed => {

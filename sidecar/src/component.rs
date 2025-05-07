@@ -88,7 +88,7 @@ pub trait Component {
 #[derive(new)]
 pub struct SseServerComponent {
     maybe_database: Option<LazyDatabaseWrapper>,
-    sidecar_event_sender: Option<Sender<SidecarEvent>>,
+    sidecar_event_sender: Sender<SidecarEvent>,
 }
 
 #[async_trait]
@@ -114,7 +114,10 @@ impl Component for SseServerComponent {
                 } else {
                     None
                 };
-
+                let enable_block_prefetch = config
+                    .rpc_server
+                    .as_ref()
+                    .is_some_and(|rpc_config| rpc_config.main_server.enable_block_prefetch);
                 // If sse server is configured, both storage config and database must be "Some" here. This should be ensured by prior validation.
                 let future = run_sse_sidecar(
                     sse_server_config.clone(),
@@ -122,6 +125,7 @@ impl Component for SseServerComponent {
                     maybe_database,
                     config.network_name.clone(),
                     self.sidecar_event_sender.clone(),
+                    enable_block_prefetch,
                 )
                 .map(|res| res.map_err(|e| ComponentError::runtime_error(self.name(), e)));
                 Ok(Some(Box::pin(future)))
@@ -176,7 +180,9 @@ impl Component for RestApiComponent {
 }
 
 #[derive(new)]
-pub struct AdminApiComponent;
+pub struct AdminApiComponent {
+    sidecar_event_sender: Sender<SidecarEvent>,
+}
 
 #[async_trait]
 impl Component for AdminApiComponent {
@@ -186,7 +192,7 @@ impl Component for AdminApiComponent {
     ) -> Result<Option<BoxFuture<'_, Result<ExitCode, ComponentError>>>, ComponentError> {
         if let Some(config) = &config.admin_api_server {
             if config.enable_server {
-                let future = run_admin_server(config.clone())
+                let future = run_admin_server(config.clone(), self.sidecar_event_sender.clone())
                     .map(|res| res.map_err(|e| ComponentError::runtime_error(self.name(), e)));
                 Ok(Some(Box::pin(future)))
             } else {
@@ -281,7 +287,8 @@ mod tests {
 
     #[tokio::test]
     async fn given_sse_server_component_when_no_db_but_config_defined_should_return_some() {
-        let component = SseServerComponent::new(None, None);
+        let (tx, _) = broadcast::channel(1);
+        let component = SseServerComponent::new(None, tx);
         let config = all_components_all_enabled();
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());
@@ -290,7 +297,8 @@ mod tests {
 
     #[tokio::test]
     async fn given_sse_server_component_when_db_but_no_config_should_return_none() {
-        let component = SseServerComponent::new(Some(LazyDatabaseWrapper::for_tests()), None);
+        let (tx, _) = broadcast::channel(1);
+        let component = SseServerComponent::new(Some(LazyDatabaseWrapper::for_tests()), tx);
         let mut config = all_components_all_disabled();
         config.sse_server = None;
         let res = component.prepare_component_task(&config).await;
@@ -300,7 +308,8 @@ mod tests {
 
     #[tokio::test]
     async fn given_sse_server_component_when_config_disabled_should_return_none() {
-        let component = SseServerComponent::new(Some(LazyDatabaseWrapper::for_tests()), None);
+        let (tx, _) = broadcast::channel(1);
+        let component = SseServerComponent::new(Some(LazyDatabaseWrapper::for_tests()), tx);
         let config = all_components_all_disabled();
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());
@@ -309,7 +318,8 @@ mod tests {
 
     #[tokio::test]
     async fn given_sse_server_component_when_db_and_config_should_return_some() {
-        let component = SseServerComponent::new(Some(LazyDatabaseWrapper::for_tests()), None);
+        let (tx, _) = broadcast::channel(1);
+        let component = SseServerComponent::new(Some(LazyDatabaseWrapper::for_tests()), tx);
         let config = all_components_all_enabled();
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());
@@ -355,7 +365,8 @@ mod tests {
 
     #[tokio::test]
     async fn given_admin_api_server_component_when_no_config_should_return_none() {
-        let component = AdminApiComponent::new();
+        let (tx, _) = broadcast::channel(1);
+        let component = AdminApiComponent::new(tx);
         let mut config = all_components_all_disabled();
         config.admin_api_server = None;
         let res = component.prepare_component_task(&config).await;
@@ -365,7 +376,8 @@ mod tests {
 
     #[tokio::test]
     async fn given_admin_api_server_component_when_config_disabled_should_return_none() {
-        let component = AdminApiComponent::new();
+        let (tx, _) = broadcast::channel(1);
+        let component = AdminApiComponent::new(tx);
         let config = all_components_all_disabled();
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());
@@ -374,7 +386,8 @@ mod tests {
 
     #[tokio::test]
     async fn given_admin_api_server_component_when_config_should_return_some() {
-        let component = AdminApiComponent::new();
+        let (tx, _) = broadcast::channel(1);
+        let component = AdminApiComponent::new(tx);
         let config = all_components_all_enabled();
         let res = component.prepare_component_task(&config).await;
         assert!(res.is_ok());
@@ -446,10 +459,10 @@ mod tests {
         };
         rpc_server.speculative_exec_server = Some(speculative_config);
         SidecarConfig {
-            storage: Some(StorageConfig::default()),
-            admin_api_server: Some(AdminApiServerConfig::default()),
-            rest_api_server: Some(RestApiServerConfig::default()),
-            sse_server: Some(SseEventServerConfig::default()),
+            storage: Some(StorageConfig::test_default()),
+            admin_api_server: Some(AdminApiServerConfig::test_default()),
+            rest_api_server: Some(RestApiServerConfig::test_default()),
+            sse_server: Some(SseEventServerConfig::test_default()),
             rpc_server: Some(rpc_server),
             ..Default::default()
         }

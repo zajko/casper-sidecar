@@ -35,7 +35,10 @@ use tabled::{
 };
 use tempfile::tempdir;
 use tokio::{
-    sync::mpsc::{self, Receiver},
+    sync::{
+        broadcast::channel,
+        mpsc::{self, Receiver},
+    },
     task::JoinHandle,
     time::{Instant, sleep},
 };
@@ -151,7 +154,6 @@ struct EventLatency {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum EventType {
     ApiVersion,
-    SidecarVersion,
     BlockAdded,
     TransactionAccepted,
     TransactionExpired,
@@ -166,7 +168,6 @@ impl From<SseData> for EventType {
     fn from(sse_data: SseData) -> Self {
         match sse_data {
             SseData::ApiVersion(_) => EventType::ApiVersion,
-            SseData::SidecarVersion(_) => EventType::SidecarVersion,
             SseData::BlockAdded { .. } => EventType::BlockAdded,
             SseData::TransactionAccepted { .. } => EventType::TransactionAccepted,
             SseData::TransactionProcessed { .. } => EventType::TransactionProcessed,
@@ -183,7 +184,6 @@ impl Display for EventType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let string = match self {
             EventType::ApiVersion => "ApiVersion",
-            EventType::SidecarVersion => "SidecarVersion",
             EventType::BlockAdded => "BlockAdded",
             EventType::TransactionAccepted => "TransactionAccepted",
             EventType::TransactionExpired => "TransactionExpired",
@@ -205,7 +205,6 @@ impl TimestampedEvent {
     fn identifier(&self) -> String {
         match &self.event {
             SseData::ApiVersion(_) => "ApiVersion".to_string(),
-            SseData::SidecarVersion(_) => "SidecarVersion".to_string(),
             SseData::BlockAdded { block_hash, .. } => block_hash.to_string(),
             SseData::TransactionAccepted(transaction) => transaction.hash().to_string(),
             SseData::TransactionProcessed {
@@ -263,6 +262,7 @@ fn highlight_slow_latency(latency: &u128) -> String {
 
 #[allow(clippy::too_many_lines)]
 async fn performance_check(scenario: Scenario, duration: Duration, acceptable_latency: Duration) {
+    let (tx, _) = channel(1);
     let test_rng = TestRng::new();
 
     let temp_storage_dir = tempdir().expect("Should have created a temporary storage directory");
@@ -307,6 +307,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
         connection_timeout: Duration::from_secs(100),
         sleep_between_keep_alive_checks: Duration::from_secs(100),
         no_message_timeout: Duration::from_secs(100),
+        sidecar_event_sender: tx,
     }
     .build()
     .unwrap();
@@ -317,7 +318,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
             println!("Node listener Error: {error}");
         }
     });
-
+    let (tx, _) = channel(1);
     let (sidecar_event_tx, sidecar_event_rx) = mpsc::channel(100);
 
     let sidecar_node_interface = NodeConnectionInterface {
@@ -335,6 +336,7 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
         connection_timeout: Duration::from_secs(100),
         sleep_between_keep_alive_checks: Duration::from_secs(100),
         no_message_timeout: Duration::from_secs(100),
+        sidecar_event_sender: tx,
     }
     .build()
     .unwrap();

@@ -11,7 +11,7 @@ mod types;
 mod version_fetcher;
 use crate::event_listener_status::*;
 use anyhow::Error;
-use casper_event_types::Filter;
+use casper_event_types::{Filter, SidecarEvent};
 use connection_manager::{ConnectionManager, ConnectionManagerError};
 use connection_tasks::ConnectionTasks;
 use connections_builder::{ConnectionsBuilder, DefaultConnectionsBuilder};
@@ -19,6 +19,7 @@ use std::{collections::HashMap, net::IpAddr, str::FromStr, sync::Arc, time::Dura
 use tokio::{
     sync::{
         Mutex,
+        broadcast::Sender as BroadcastSender,
         mpsc::{self, Sender},
     },
     time::sleep,
@@ -39,6 +40,7 @@ pub struct EventListenerBuilder {
     pub connection_timeout: Duration,
     pub sleep_between_keep_alive_checks: Duration,
     pub no_message_timeout: Duration,
+    pub sidecar_event_sender: BroadcastSender<SidecarEvent>,
 }
 
 type FilterWithEventId = Sender<(Filter, u32)>;
@@ -65,6 +67,7 @@ impl EventListenerBuilder {
             allow_partial_connection: self.allow_partial_connection,
             version_fetcher,
             connections_builder,
+            sidecar_event_sender: self.sidecar_event_sender.clone(),
         })
     }
 }
@@ -86,6 +89,8 @@ pub struct EventListener {
     version_fetcher: Arc<dyn NodeMetadataFetcher>,
     /// Builder of the connections to the node
     connections_builder: Arc<dyn ConnectionsBuilder>,
+    /// Handle to sidecar message bus
+    sidecar_event_sender: BroadcastSender<SidecarEvent>,
 }
 
 enum ConnectOutcome {
@@ -107,13 +112,10 @@ impl EventListener {
 
     /// Spins up the connections and starts pushing data from node
     pub async fn stream_aggregated_events(&mut self) -> Result<(), Error> {
-        log_status_for_event_listener(EventListenerStatus::Preparing, self);
+        self.log_status(EventListenerStatus::Preparing);
         let (last_event_id_for_filter, last_seen_event_id_sender) =
-            Self::start_last_event_id_registry(
-                self.node.ip_address.to_string(),
-                self.node.sse_port,
-            );
-        log_status_for_event_listener(EventListenerStatus::Connecting, self);
+            self.start_last_event_id_registry();
+        self.log_status(EventListenerStatus::Connecting);
         let mut current_attempt = 1;
         while current_attempt <= self.max_connection_attempts {
             self.delay_if_needed(current_attempt).await;
@@ -141,7 +143,7 @@ impl EventListener {
             }
             current_attempt += 1;
         }
-        log_status_for_event_listener(EventListenerStatus::ReconnectionsExhausted, self);
+        self.log_status(EventListenerStatus::ReconnectionsExhausted);
         Err(Error::msg(MAX_CONNECTION_ATTEMPTS_REACHED))
     }
 
@@ -155,7 +157,7 @@ impl EventListener {
     #[inline(always)]
     fn log_connections_exhausted_if_needed(&mut self, current_attempt: usize) {
         if current_attempt >= self.max_connection_attempts {
-            log_status_for_event_listener(EventListenerStatus::ReconnectionsExhausted, self);
+            self.log_status(EventListenerStatus::ReconnectionsExhausted);
         }
     }
 
@@ -187,12 +189,12 @@ impl EventListener {
             let task_result = select_result.0;
             if let Ok(res) = task_result {
                 if res.is_err() {
-                    log_status_for_event_listener(EventListenerStatus::Reconnecting, self);
+                    self.log_status(EventListenerStatus::Reconnecting);
                     return Ok(ConnectOutcome::ConnectionLost);
                 }
                 Ok(ConnectOutcome::SystemReconnect)
             } else {
-                log_status_for_event_listener(EventListenerStatus::Reconnecting, self);
+                self.log_status(EventListenerStatus::Reconnecting);
                 Ok(ConnectOutcome::ConnectionLost)
             }
         }
@@ -222,7 +224,7 @@ impl EventListener {
                                 "Restarting event listener {}:{} because of NonRecoverableError: {error}",
                                 self.node.ip_address, self.node.sse_port,
                             );
-                            log_status_for_event_listener(EventListenerStatus::Reconnecting, self);
+                            self.log_status(EventListenerStatus::Reconnecting);
                             return ConnectOutcome::ConnectionLost;
                         }
                         ConnectionManagerError::InitialConnectionError { error } => {
@@ -232,10 +234,7 @@ impl EventListener {
                                     "Restarting event listener {}:{} because of no more active connections left: {error}",
                                     self.node.ip_address, self.node.sse_port
                                 );
-                                log_status_for_event_listener(
-                                    EventListenerStatus::Reconnecting,
-                                    self,
-                                );
+                                self.log_status(EventListenerStatus::Reconnecting);
                                 return ConnectOutcome::ConnectionLost;
                             }
                         }
@@ -270,7 +269,7 @@ impl EventListener {
                 GetNodeMetadataResult::Ok(None)
             }
             Err(MetadataFetchError::VersionNotAcceptable(msg)) => {
-                log_status_for_event_listener(EventListenerStatus::IncompatibleVersion, self);
+                self.log_status(EventListenerStatus::IncompatibleVersion);
                 //The node has a build version which sidecar can't talk to. Failing fast in this case.
                 GetNodeMetadataResult::Error(Error::msg(msg))
             }
@@ -284,17 +283,22 @@ impl EventListener {
         }
     }
 
-    fn start_last_event_id_registry(
-        node_address: String,
-        sse_port: u16,
-    ) -> (CurrentFilterToIdHolder, FilterWithEventId) {
+    fn start_last_event_id_registry(&self) -> (CurrentFilterToIdHolder, FilterWithEventId) {
+        let node_address = self.node.ip_address.to_string();
+        let sse_port = self.node.sse_port;
         let (last_seen_event_id_sender, mut last_seen_event_id_receiver) = mpsc::channel(10);
         let last_event_id_for_filter: CurrentFilterToIdHolder =
             Arc::new(Mutex::new(HashMap::<Filter, u32>::new()));
+        let sidecar_event_sender = self.sidecar_event_sender.clone();
         let last_event_id_for_filter_for_thread = last_event_id_for_filter.clone();
         tokio::spawn(async move {
             while let Some((filter, id)) = last_seen_event_id_receiver.recv().await {
-                EventListenerStatus::Connected.log_status(node_address.as_str(), sse_port);
+                let node_label = format!("{node_address}:{sse_port}");
+                log_status_x(
+                    node_label,
+                    EventListenerStatus::Connected,
+                    sidecar_event_sender.clone(),
+                );
                 let last_event_id_for_filter_clone = last_event_id_for_filter_for_thread.clone();
                 let mut guard = last_event_id_for_filter_clone.lock().await;
                 guard.insert(filter, id);
@@ -303,6 +307,25 @@ impl EventListener {
         });
         (last_event_id_for_filter, last_seen_event_id_sender)
     }
+
+    fn log_status(&self, status: EventListenerStatus) {
+        let node_address = self.node.ip_address.to_string();
+        let sse_port = self.node.sse_port;
+        let node_label = format!("{node_address}:{sse_port}");
+        log_status_x(node_label, status, self.sidecar_event_sender.clone())
+    }
+}
+
+fn log_status_x(
+    node_label: String,
+    status: EventListenerStatus,
+    sidecar_event_sender: BroadcastSender<SidecarEvent>,
+) {
+    status.log_status(node_label.clone());
+    let _ = sidecar_event_sender.send(SidecarEvent::SseNodeConnectionStatusChange {
+        connection: node_label,
+        status: status.to_string(),
+    });
 }
 
 fn start_connections(
@@ -324,12 +347,6 @@ fn start_connections(
             })
         })
         .collect()
-}
-
-fn log_status_for_event_listener(status: EventListenerStatus, event_listener: &EventListener) {
-    let node_address = event_listener.node.ip_address.to_string();
-    let sse_port = event_listener.node.sse_port;
-    status.log_status(node_address.as_str(), sse_port);
 }
 
 fn status_endpoint(ip_address: IpAddr, rest_port: u16) -> Result<Url, Error> {
@@ -354,6 +371,7 @@ mod tests {
     use anyhow::Error;
     use casper_types::ProtocolVersion;
     use std::{collections::HashSet, str::FromStr, sync::Arc, time::Duration};
+    use tokio::sync::broadcast::channel;
 
     #[tokio::test]
     async fn given_event_listener_should_not_connect_when_incompatible_version() {
@@ -435,6 +453,7 @@ mod tests {
         connections_builder: Arc<MockConnectionsBuilder>,
         allow_partial_connection: bool,
     ) -> Error {
+        let (tx, _) = channel(1);
         let mut listener = EventListener {
             node_metadata: NodeMetadata::default(),
             node: NodeConnectionInterface::default(),
@@ -443,6 +462,7 @@ mod tests {
             allow_partial_connection,
             version_fetcher: Arc::new(version_fetcher),
             connections_builder,
+            sidecar_event_sender: tx,
         };
         listener.stream_aggregated_events().await.unwrap_err()
     }

@@ -84,7 +84,7 @@ impl LegacySseData {
                 Some(LegacySseData::ApiVersion(*protocol_version))
             }
             // we don't translate steps
-            SseData::SidecarVersion(_) | SseData::Shutdown | SseData::Step { .. } => None,
+            SseData::Shutdown | SseData::Step { .. } => None,
             SseData::BlockAdded { block_hash, block } => {
                 build_default_block_added_translator().translate(block_hash, block)
             }

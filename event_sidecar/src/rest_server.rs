@@ -3,7 +3,6 @@ pub mod filters;
 mod handlers;
 mod metrics_layer;
 mod openapi;
-mod status;
 #[cfg(test)]
 mod tests;
 

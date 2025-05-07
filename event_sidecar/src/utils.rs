@@ -489,7 +489,8 @@ pub mod tests {
             storage_folder,
             maybe_database,
             testing_config.network_name,
-            Some(tx),
+            tx,
+            true,
         )
         .await
     }

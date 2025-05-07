@@ -1,3 +1,5 @@
+use std::fmt::{self, Display, Formatter};
+
 use metrics::sse::store_node_status;
 
 /// Helper enum determining in what state connection to a node is in.
@@ -21,7 +23,7 @@ pub(super) enum EventListenerStatus {
 }
 
 impl EventListenerStatus {
-    pub(super) fn log_status(&self, node_address: &str, sse_port: u16) {
+    pub(super) fn log_status(&self, node_label: String) {
         let status = match self {
             EventListenerStatus::Preparing => 0.0,
             EventListenerStatus::Connecting => 1.0,
@@ -30,7 +32,20 @@ impl EventListenerStatus {
             EventListenerStatus::ReconnectionsExhausted => -1.0,
             EventListenerStatus::IncompatibleVersion => -2.0,
         };
-        let node_label = format!("{node_address}:{sse_port}");
         store_node_status(node_label.as_str(), status);
+    }
+}
+
+impl Display for EventListenerStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let txt = match self {
+            EventListenerStatus::Preparing => "Preparing",
+            EventListenerStatus::Connecting => "Connecting",
+            EventListenerStatus::Connected => "Connected",
+            EventListenerStatus::Reconnecting => "Reconnecting",
+            EventListenerStatus::ReconnectionsExhausted => "ReconnectionsExhausted",
+            EventListenerStatus::IncompatibleVersion => "IncompatibleVersion",
+        };
+        write!(f, "{txt}")
     }
 }

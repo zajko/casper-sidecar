@@ -21,11 +21,11 @@ pub async fn run(config: SidecarConfig) -> Result<ExitCode, Error> {
         .filter(|storage_config| storage_config.is_enabled())
         .map(|storage_config| LazyDatabaseWrapper::new(storage_config.clone()));
     let mut components: Vec<Box<dyn Component>> = Vec::new();
-    let admin_api_component = AdminApiComponent::new();
+    let admin_api_component = AdminApiComponent::new(tx.clone());
     components.push(Box::new(admin_api_component));
     let rest_api_component = RestApiComponent::new(maybe_database.clone());
     components.push(Box::new(rest_api_component));
-    let sse_server_component = SseServerComponent::new(maybe_database, Some(tx.clone()));
+    let sse_server_component = SseServerComponent::new(maybe_database, tx.clone());
     components.push(Box::new(sse_server_component));
     let rpc_api_component = RpcApiComponent::new(tx);
     components.push(Box::new(rpc_api_component));

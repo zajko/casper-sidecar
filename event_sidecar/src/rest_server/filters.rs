@@ -1,6 +1,4 @@
-use super::{
-    errors::handle_rejection, handlers, openapi::build_open_api_filters, status::status_filters,
-};
+use super::{errors::handle_rejection, handlers, openapi::build_open_api_filters};
 use crate::{
     database::types::SseEnvelope,
     types::{
@@ -56,7 +54,6 @@ pub(super) fn combined_filters<Db: DatabaseReader + Clone + Send + Sync>(
         .or(faults_by_era(db.clone()))
         .or(finality_signatures_by_block(db))
         .or(build_open_api_filters())
-        .or(status_filters())
         .recover(handle_rejection)
 }
 

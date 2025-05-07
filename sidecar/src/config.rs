@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn sidecar_config_should_fail_validation_when_sse_server_and_no_defined_dbs() {
         let config = SidecarConfig {
-            sse_server: Some(SseEventServerConfig::default()),
+            sse_server: Some(SseEventServerConfig::test_default()),
             storage: Some(StorageConfig::no_dbs()),
             ..Default::default()
         };
@@ -188,7 +188,7 @@ mod tests {
     #[test]
     fn sidecar_config_should_fail_validation_when_sse_server_and_no_enabled_dbs() {
         let config = SidecarConfig {
-            sse_server: Some(SseEventServerConfig::default()),
+            sse_server: Some(SseEventServerConfig::test_default()),
             storage: Some(StorageConfig::no_enabled_dbs()),
             ..Default::default()
         };
@@ -208,8 +208,8 @@ mod tests {
         let config = SidecarConfig {
             rpc_server: Some(RpcServerConfig::default()),
             sse_server: None,
-            rest_api_server: Some(RestApiServerConfig::default()),
-            storage: Some(StorageConfig::default()),
+            rest_api_server: Some(RestApiServerConfig::test_default()),
+            storage: Some(StorageConfig::test_default()),
             ..Default::default()
         };
 
