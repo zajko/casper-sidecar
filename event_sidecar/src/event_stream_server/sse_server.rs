@@ -58,8 +58,6 @@ pub const SSE_API_DEPLOYS_PATH: &str = "deploys";
 /// The URL path part to subscribe to only `FinalitySignature` events.
 pub const SSE_API_SIGNATURES_PATH: &str = "sigs";
 
-/// The URL path part to subscribe to sidecar specific events.
-pub const SSE_API_SIDECAR_PATH: &str = "sidecar";
 /// The URL query string field name.
 pub const QUERY_FIELD: &str = "start_from";
 
@@ -92,8 +90,6 @@ const DEPLOYS_FILTER: [EventFilter; 2] =
 /// The filter associated with `/events/sigs` path.
 const SIGNATURES_FILTER: [EventFilter; 2] =
     [EventFilter::ApiVersion, EventFilter::FinalitySignature];
-/// The filter associated with `/events/sidecar` path.
-const SIDECAR_FILTER: [EventFilter; 1] = [EventFilter::SidecarVersion];
 
 #[cfg(test)]
 static ENDS_WITH_ID_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\nid:\d*$").unwrap());
@@ -140,14 +136,6 @@ impl ServerSentEvent {
             id: None,
             comment: None,
             data: Some(SseData::ApiVersion(client_api_version)),
-            inbound_filter: None,
-        }
-    }
-    pub(super) fn sidecar_version_event(version: ProtocolVersion) -> Self {
-        ServerSentEvent {
-            id: None,
-            comment: None,
-            data: Some(SseData::SidecarVersion(version)),
             inbound_filter: None,
         }
     }
@@ -228,9 +216,7 @@ fn filter_map_server_sent_event(
     if let Some(data) = event.data.as_ref() {
         let id = determine_id(event, data)?;
         match data {
-            &SseData::ApiVersion { .. } | &SseData::SidecarVersion { .. } => {
-                event_to_warp_event(event, data, is_legacy_filter, None)
-            }
+            &SseData::ApiVersion { .. } => event_to_warp_event(event, data, is_legacy_filter, None),
             &SseData::BlockAdded { .. }
             | &SseData::TransactionProcessed { .. }
             | &SseData::TransactionExpired { .. }
@@ -276,7 +262,7 @@ fn should_skip_event(
 
 fn should_send_shutdown(event: &ServerSentEvent, stream_filter: &Endpoint) -> bool {
     match (&event.inbound_filter, stream_filter) {
-        (Some(_), _) | (None, Endpoint::Sidecar) => true,
+        (Some(_), _) => true,
         (None, _) => false,
     }
 }
@@ -289,10 +275,7 @@ fn determine_id(event: &ServerSentEvent, data: &SseData) -> Option<String> {
         }
         Some(id.to_string())
     } else {
-        if !matches!(
-            data,
-            &SseData::ApiVersion { .. } | &SseData::SidecarVersion { .. }
-        ) {
+        if !matches!(data, &SseData::ApiVersion { .. }) {
             error!("only ApiVersion and SidecarVersion may have no event ID");
             return None;
         }
@@ -328,7 +311,6 @@ pub(super) fn path_to_filter(
         SSE_API_MAIN_PATH if enable_legacy_filters => Some(&Endpoint::Main),
         SSE_API_DEPLOYS_PATH if enable_legacy_filters => Some(&Endpoint::Deploys),
         SSE_API_SIGNATURES_PATH if enable_legacy_filters => Some(&Endpoint::Sigs),
-        SSE_API_SIDECAR_PATH => Some(&Endpoint::Sidecar),
         _ => None,
     }
 }
@@ -342,7 +324,6 @@ pub(super) fn get_filter(
         SSE_API_MAIN_PATH if enable_legacy_filters => Some((&MAIN_FILTER[..], true)),
         SSE_API_DEPLOYS_PATH if enable_legacy_filters => Some((&DEPLOYS_FILTER[..], true)),
         SSE_API_SIGNATURES_PATH if enable_legacy_filters => Some((&SIGNATURES_FILTER[..], true)),
-        SSE_API_SIDECAR_PATH => Some((&SIDECAR_FILTER[..], false)),
         _ => None,
     }
 }
@@ -373,19 +354,17 @@ fn parse_query(query: HashMap<String, String>) -> Result<Option<Id>, Response> {
 fn create_404(enable_legacy_filters: bool) -> Response {
     let text = if enable_legacy_filters {
         format!(
-            "invalid path: expected '/{root}/{main}', '/{root}/{deploys}' or '/{root}/{sigs} or '/{root}/{sidecar}'\n",
+            "invalid path: expected '/{root}/{main}', '/{root}/{deploys}' or '/{root}/{sigs}'\n",
             root = SSE_API_ROOT_PATH,
             main = SSE_API_MAIN_PATH,
             deploys = SSE_API_DEPLOYS_PATH,
             sigs = SSE_API_SIGNATURES_PATH,
-            sidecar = SSE_API_SIDECAR_PATH,
         )
     } else {
         format!(
-            "invalid path: expected '/{root}/{main}' or '/{root}/{sidecar}'\n",
+            "invalid path: expected '/{root}/{main}'\n",
             root = SSE_API_ROOT_PATH,
             main = SSE_API_MAIN_PATH,
-            sidecar = SSE_API_SIDECAR_PATH,
         )
     };
     let mut response = Response::new(Body::from(text));
@@ -769,12 +748,6 @@ mod tests {
             data: Some(SseData::Shutdown),
             inbound_filter: Some(SseFilter::Events),
         };
-        let sidecar_api_version = ServerSentEvent {
-            id: Some(rng.r#gen()),
-            comment: None,
-            data: Some(SseData::random_sidecar_version(&mut rng)),
-            inbound_filter: None,
-        };
 
         should_not_filter_out(&api_version, &EVENTS_FILTER[..]);
         should_not_filter_out(&block_added, &EVENTS_FILTER[..]);
@@ -786,19 +759,6 @@ mod tests {
         should_not_filter_out(&shutdown, &EVENTS_FILTER);
         should_not_filter_out(&api_version, &EVENTS_FILTER[..]);
         should_not_filter_out(&finality_signature, &EVENTS_FILTER[..]);
-        should_filter_out(&sidecar_api_version, &EVENTS_FILTER[..]);
-
-        should_filter_out(&api_version, &SIDECAR_FILTER[..]);
-        should_filter_out(&block_added, &SIDECAR_FILTER[..]);
-        should_filter_out(&transaction_accepted, &SIDECAR_FILTER[..]);
-        should_filter_out(&transaction_processed, &SIDECAR_FILTER[..]);
-        should_filter_out(&transaction_expired, &SIDECAR_FILTER[..]);
-        should_filter_out(&fault, &SIDECAR_FILTER[..]);
-        should_filter_out(&step, &SIDECAR_FILTER[..]);
-        should_filter_out(&api_version, &SIDECAR_FILTER[..]);
-        should_filter_out(&finality_signature, &SIDECAR_FILTER[..]);
-        should_not_filter_out(&shutdown, &SIDECAR_FILTER);
-        should_not_filter_out(&sidecar_api_version, &SIDECAR_FILTER[..]);
 
         should_not_filter_out(&api_version, &MAIN_FILTER[..]);
         should_not_filter_out(&block_added, &MAIN_FILTER[..]);
@@ -901,7 +861,6 @@ mod tests {
 
         for filter in &[
             &EVENTS_FILTER[..],
-            &SIDECAR_FILTER[..],
             &MAIN_FILTER[..],
             &DEPLOYS_FILTER[..],
             &SIGNATURES_FILTER[..],

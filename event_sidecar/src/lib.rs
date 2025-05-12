@@ -328,13 +328,6 @@ async fn handle_single_event<EHS: EventHandlingService + Send + Sync>(
     api_version_manager: GuardedApiVersionManager,
 ) {
     match &sse_event.data {
-        SseData::SidecarVersion(_) => {
-            error!(
-                "Received SseData::SidecarVersion on inbound SSE from the node which should never happen"
-            );
-            //Do nothing -> the inbound shouldn't produce this endpoint, it can be only produced by sidecar
-            //to the outbound
-        }
         SseData::ApiVersion(version) => {
             handle_api_version(
                 version,

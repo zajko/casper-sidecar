@@ -362,11 +362,11 @@ pub mod tests {
     async fn given_mock_sse_connection_should_read_data() {
         let data1 = Event {
             data: "data 1".to_string(),
-            ..Default::default()
+            ..Event::default()
         };
         let data2 = Event {
             data: "data 2".to_string(),
-            ..Default::default()
+            ..Event::default()
         };
         let mut connection = MockSseConnection {
             data: vec![data1, data2],
