@@ -20,7 +20,6 @@ pub struct SidecarConfigTarget {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-#[cfg_attr(test, derive(Default))]
 pub struct SidecarConfig {
     pub max_thread_count: Option<usize>,
     pub max_blocking_thread_count: Option<usize>,
@@ -100,6 +99,20 @@ impl SidecarConfig {
             .as_ref()
             .is_some_and(|config| config.enable_server)
     }
+
+    #[cfg(test)]
+    pub fn test_default() -> Self {
+        Self {
+            max_thread_count: None,
+            max_blocking_thread_count: None,
+            network_name: None,
+            sse_server: None,
+            rpc_server: None,
+            storage: None,
+            rest_api_server: None,
+            admin_api_server: None,
+        }
+    }
 }
 
 impl TryFrom<SidecarConfigTarget> for SidecarConfig {
@@ -155,7 +168,7 @@ mod tests {
         let config = SidecarConfig {
             sse_server: Some(SseEventServerConfig::default_no_persistence()),
             storage: None,
-            ..Default::default()
+            ..SidecarConfig::test_default()
         };
 
         let res = config.validate();
@@ -170,9 +183,9 @@ mod tests {
     #[test]
     fn sidecar_config_should_fail_validation_when_sse_server_and_no_defined_dbs() {
         let config = SidecarConfig {
-            sse_server: Some(SseEventServerConfig::default()),
+            sse_server: Some(SseEventServerConfig::test_default()),
             storage: Some(StorageConfig::no_dbs()),
-            ..Default::default()
+            ..SidecarConfig::test_default()
         };
 
         let res = config.validate();
@@ -188,9 +201,9 @@ mod tests {
     #[test]
     fn sidecar_config_should_fail_validation_when_sse_server_and_no_enabled_dbs() {
         let config = SidecarConfig {
-            sse_server: Some(SseEventServerConfig::default()),
+            sse_server: Some(SseEventServerConfig::test_default()),
             storage: Some(StorageConfig::no_enabled_dbs()),
-            ..Default::default()
+            ..SidecarConfig::test_default()
         };
 
         let res = config.validate();
@@ -206,11 +219,11 @@ mod tests {
     #[test]
     fn sidecar_config_should_fail_validation_when_rest_api_server_and_no_storage() {
         let config = SidecarConfig {
-            rpc_server: Some(RpcServerConfig::default()),
+            rpc_server: Some(RpcServerConfig::test_default()),
             sse_server: None,
-            rest_api_server: Some(RestApiServerConfig::default()),
-            storage: Some(StorageConfig::default()),
-            ..Default::default()
+            rest_api_server: Some(RestApiServerConfig::test_default()),
+            storage: Some(StorageConfig::test_default()),
+            ..SidecarConfig::test_default()
         };
 
         let res = config.validate();
@@ -226,10 +239,10 @@ mod tests {
     #[test]
     fn sidecar_config_should_fail_validation_when_two_db_connections_are_defined() {
         let config = SidecarConfig {
-            rpc_server: Some(RpcServerConfig::default()),
+            rpc_server: Some(RpcServerConfig::test_default()),
             sse_server: None,
             storage: Some(StorageConfig::two_dbs()),
-            ..Default::default()
+            ..SidecarConfig::test_default()
         };
 
         let res = config.validate();
@@ -243,11 +256,11 @@ mod tests {
     fn sidecar_config_should_fail_validation_when_rest_api_and_sse_has_no_persistence() {
         let sse_server = SseEventServerConfig::default_no_persistence();
         let config = SidecarConfig {
-            rpc_server: Some(RpcServerConfig::default()),
+            rpc_server: Some(RpcServerConfig::test_default()),
             sse_server: Some(sse_server),
-            rest_api_server: Some(RestApiServerConfig::default()),
-            storage: Some(StorageConfig::default()),
-            ..Default::default()
+            rest_api_server: Some(RestApiServerConfig::test_default()),
+            storage: Some(StorageConfig::test_default()),
+            ..SidecarConfig::test_default()
         };
 
         let res = config.validate();
@@ -263,8 +276,8 @@ mod tests {
     #[test]
     fn sidecar_config_should_be_ok_if_rpc_is_defined_and_nothing_else() {
         let config = SidecarConfig {
-            rpc_server: Some(RpcServerConfig::default()),
-            ..Default::default()
+            rpc_server: Some(RpcServerConfig::test_default()),
+            ..SidecarConfig::test_default()
         };
 
         let res = config.validate();

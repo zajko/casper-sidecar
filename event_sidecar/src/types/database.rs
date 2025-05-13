@@ -88,7 +88,7 @@ impl LazyDatabaseWrapper {
         let db = Database::for_tests();
         let cell = Arc::new(tokio::sync::OnceCell::from(Ok(db)));
         Self {
-            config: StorageConfig::default(),
+            config: StorageConfig::test_default(),
             resource: cell,
         }
     }

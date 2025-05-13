@@ -269,8 +269,8 @@ impl TestFixture {
             },
             max_concurrent_subscribers: server_behavior
                 .max_concurrent_subscribers
-                .unwrap_or(Config::default().max_concurrent_subscribers),
-            ..Default::default()
+                .unwrap_or(Config::test_default().max_concurrent_subscribers),
+            ..Config::test_default()
         };
         let mut server = EventStreamServer::new(config, self.storage_dir.path(), true).unwrap();
 
@@ -988,7 +988,8 @@ async fn should_handle_bad_url_path() {
         format!("http://{server_address}/{QUERY_FIELD}/bad?{ROOT_PATH}=0"),
     ];
 
-    let expected_body = "invalid path: expected '/events/main', '/events/deploys' or '/events/sigs or '/events/sidecar'";
+    let expected_body =
+        "invalid path: expected '/events/main', '/events/deploys' or '/events/sigs'";
     for url in &urls {
         let response = reqwest::get(url).await.unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND, "URL: {}", url);

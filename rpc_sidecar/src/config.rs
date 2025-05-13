@@ -1,13 +1,14 @@
+#[cfg(any(feature = "testing", test))]
+use casper_json_rpc::DEFAULT_LIMIT_PERIOD;
+use casper_json_rpc::{ConfigLimit, DEFAULT_LIMIT_REQUESTS, nonzero_u32};
+use casper_types::TimeDiff;
+use datasize::DataSize;
+use serde::Deserialize;
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr},
     num::NonZeroU32,
 };
-
-use casper_json_rpc::{ConfigLimit, DEFAULT_LIMIT_PERIOD, DEFAULT_LIMIT_REQUESTS, nonzero_u32};
-use casper_types::TimeDiff;
-use datasize::DataSize;
-use serde::Deserialize;
 use thiserror::Error;
 
 use crate::SpeculativeExecConfig;
@@ -15,14 +16,20 @@ use crate::SpeculativeExecConfig;
 /// Default binding address for the JSON-RPC HTTP server.
 ///
 /// Uses a fixed port per node, but binds on any interface.
+#[cfg(any(feature = "testing", test))]
 const DEFAULT_IP_ADDRESS: IpAddr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
+
+#[cfg(any(feature = "testing", test))]
 const DEFAULT_PORT: u16 = 0;
 /// Default rate limit in qps.
+#[cfg(any(feature = "testing", test))]
 const DEFAULT_QPS_LIMIT: NonZeroU32 = NonZeroU32::new(100).unwrap();
 /// Default max body bytes.  This is 2.5MB which should be able to accommodate the largest valid
 /// JSON-RPC request, which would be an "account_put_deploy".
+#[cfg(any(feature = "testing", test))]
 const DEFAULT_MAX_BODY_BYTES: u64 = 2_621_440;
 /// Default CORS origin.
+#[cfg(any(feature = "testing", test))]
 const DEFAULT_CORS_ORIGIN: String = String::new();
 /// Default enable block prefetch
 const DEFAULT_ENABLE_BLOCK_PREFETCH: bool = false;
@@ -39,11 +46,21 @@ pub enum FieldParseError {
 #[derive(Clone, Debug, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
-#[cfg_attr(any(feature = "testing", test), derive(Default))]
 pub struct RpcServerConfig {
     pub main_server: RpcConfig,
     pub speculative_exec_server: Option<SpeculativeExecConfig>,
     pub node_client: NodeClientConfig,
+}
+
+impl RpcServerConfig {
+    #[cfg(any(feature = "testing", test))]
+    pub fn test_default() -> Self {
+        Self {
+            main_server: RpcConfig::test_default(),
+            speculative_exec_server: None,
+            node_client: NodeClientConfig::test_default(),
+        }
+    }
 }
 
 /// JSON-RPC HTTP server configuration.
@@ -78,10 +95,16 @@ pub struct RpcConfig {
 }
 
 impl RpcConfig {
-    /// Creates a default instance for `RpcServer`.
-    #[must_use]
-    pub fn new() -> Self {
-        RpcConfig {
+    pub(crate) fn default_limit(&self) -> ConfigLimit {
+        ConfigLimit {
+            requests: self.default_limit_requests,
+            period: self.default_limit_period,
+        }
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn test_default() -> RpcConfig {
+        Self {
             enable_server: true,
             ip_address: DEFAULT_IP_ADDRESS,
             port: DEFAULT_PORT,
@@ -94,40 +117,37 @@ impl RpcConfig {
             enable_block_prefetch: DEFAULT_ENABLE_BLOCK_PREFETCH,
         }
     }
-
-    pub(crate) fn default_limit(&self) -> ConfigLimit {
-        ConfigLimit {
-            requests: self.default_limit_requests,
-            period: self.default_limit_period,
-        }
-    }
-}
-
-impl Default for RpcConfig {
-    fn default() -> Self {
-        RpcConfig::new()
-    }
 }
 
 /// Default address to connect to the node.
 // Change this to SocketAddr, once SocketAddr::new is const stable.
+#[cfg(any(feature = "testing", test))]
 const DEFAULT_NODE_CONNECT_IP_ADDRESS: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
+#[cfg(any(feature = "testing", test))]
 const DEFAULT_NODE_CONNECT_PORT: u16 = 28104;
 /// Default maximum payload size.
+#[cfg(any(feature = "testing", test))]
 const DEFAULT_MAX_PAYLOAD_SIZE: u32 = 4 * 1024 * 1024;
 /// Default message timeout in seconds.
+#[cfg(any(feature = "testing", test))]
 const DEFAULT_MESSAGE_TIMEOUT_SECS: u64 = 30;
 /// Default timeout for client access.
+#[cfg(any(feature = "testing", test))]
 const DEFAULT_CLIENT_ACCESS_TIMEOUT_SECS: u64 = 10;
 /// Default exponential backoff base delay.
+#[cfg(any(feature = "testing", test))]
 const DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS: u64 = 1000;
 /// Default exponential backoff maximum delay.
+#[cfg(any(feature = "testing", test))]
 const DEFAULT_EXPONENTIAL_BACKOFF_MAX_MS: u64 = 64_000;
 /// Default exponential backoff coefficient.
+#[cfg(any(feature = "testing", test))]
 const DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT: u64 = 2;
 /// Default keep alive timeout milliseconds.
+#[cfg(any(feature = "testing", test))]
 const DEFAULT_KEEPALIVE_TIMEOUT_MS: u64 = 1_000;
 /// Default max attempts
+#[cfg(any(feature = "testing", test))]
 const DEFAULT_EXPONENTIAL_BACKOFF_MAX_ATTEMPTS: u32 = 3;
 
 /// Node client configuration.
@@ -153,9 +173,8 @@ pub struct NodeClientConfig {
 }
 
 impl NodeClientConfig {
-    /// Creates a default instance for `NodeClientConfig`.
-    #[must_use]
-    pub fn new() -> Self {
+    #[cfg(any(feature = "testing", test))]
+    pub fn test_default() -> Self {
         NodeClientConfig {
             ip_address: DEFAULT_NODE_CONNECT_IP_ADDRESS,
             port: DEFAULT_NODE_CONNECT_PORT,
@@ -213,12 +232,6 @@ impl NodeClientConfig {
                 max_attempts: num_of_retries,
             },
         }
-    }
-}
-
-impl Default for NodeClientConfig {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
