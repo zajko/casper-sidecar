@@ -7,7 +7,6 @@ pub enum Endpoint {
     Main,
     Deploys,
     Sigs,
-    Sidecar,
 }
 
 impl Display for Endpoint {
@@ -18,7 +17,6 @@ impl Display for Endpoint {
             Endpoint::Main => write!(f, "events/main"),
             Endpoint::Deploys => write!(f, "events/deploys"),
             Endpoint::Sigs => write!(f, "events/sigs"),
-            Endpoint::Sidecar => write!(f, "events/sidecar"),
         }
     }
 }

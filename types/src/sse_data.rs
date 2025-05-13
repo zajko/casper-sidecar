@@ -5,7 +5,6 @@
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum EventFilter {
     ApiVersion,
-    SidecarVersion,
     BlockAdded,
     TransactionAccepted,
     TransactionProcessed,
@@ -61,10 +60,6 @@ pub enum SseData {
     /// The version of this node's API server.  This event will always be the first sent to a new
     /// client, and will have no associated event ID provided.
     ApiVersion(ProtocolVersion),
-    /// This event is specific only to the Sidecar. For now it is put here but ultimately we will
-    /// need to split the way we store events going to outbound so we can discern between events
-    /// coming from inbound and the sidecar itself
-    SidecarVersion(ProtocolVersion),
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
@@ -106,7 +101,6 @@ impl SseData {
     pub fn type_label(&self) -> &str {
         match self {
             SseData::ApiVersion(_) => "ApiVersion",
-            SseData::SidecarVersion(_) => "SidecarVersion",
             SseData::BlockAdded { .. } => "BlockAdded",
             SseData::TransactionAccepted(_) => "TransactionAccepted",
             SseData::TransactionProcessed { .. } => "TransactionProcessed",
@@ -123,7 +117,6 @@ impl SseData {
         match self {
             SseData::Shutdown => true,
             //Keeping the rest part as explicit match so that if a new variant is added, it will be caught by the compiler
-            SseData::SidecarVersion(_) => filter.contains(&EventFilter::SidecarVersion),
             SseData::ApiVersion(_) => filter.contains(&EventFilter::ApiVersion),
             SseData::BlockAdded { .. } => filter.contains(&EventFilter::BlockAdded),
             SseData::TransactionAccepted { .. } => {
@@ -231,16 +224,6 @@ impl SseData {
             era_id: EraId::new(rng.r#gen()),
             execution_effects: to_raw_value(&execution_effects).unwrap(),
         }
-    }
-
-    /// Returns a random `SseData::SidecarVersion`.
-    pub fn random_sidecar_version(rng: &mut TestRng) -> Self {
-        let protocol_version = ProtocolVersion::from_parts(
-            rng.gen_range(2..10),
-            rng.r#gen::<u8>() as u32,
-            rng.r#gen::<u8>() as u32,
-        );
-        SseData::SidecarVersion(protocol_version)
     }
 }
 

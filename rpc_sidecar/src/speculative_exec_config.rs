@@ -49,9 +49,15 @@ pub struct Config {
 }
 
 impl Config {
-    /// Creates a default instance for `RpcServer`.
-    #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn default_limit(&self) -> ConfigLimit {
+        ConfigLimit {
+            requests: self.default_limit_requests,
+            period: self.default_limit_period,
+        }
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn test_default() -> Self {
         Config {
             enable_server: false,
             ip_address: DEFAULT_IP_ADDRESS,
@@ -63,18 +69,5 @@ impl Config {
             default_limit_period: DEFAULT_LIMIT_PERIOD,
             limits: None,
         }
-    }
-
-    pub(crate) fn default_limit(&self) -> ConfigLimit {
-        ConfigLimit {
-            requests: self.default_limit_requests,
-            period: self.default_limit_period,
-        }
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Config::new()
     }
 }

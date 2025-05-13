@@ -67,9 +67,9 @@ pub(crate) fn prepare_config(
 impl TestingConfig {
     /// Creates a Default instance of TestingConfig which contains a Default instance of [Config]
     pub(crate) fn default() -> Self {
-        let event_server_config = SseEventServerConfig::default();
-        let storage_config = StorageConfig::default();
-        let rest_api_server_config = RestApiServerConfig::default();
+        let event_server_config = SseEventServerConfig::test_default();
+        let storage_config = StorageConfig::test_default();
+        let rest_api_server_config = RestApiServerConfig::test_default();
         Self {
             event_server_config,
             storage_config,

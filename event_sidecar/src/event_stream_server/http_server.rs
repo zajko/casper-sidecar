@@ -3,7 +3,7 @@ use super::{
     event_indexer::EventIndex,
     sse_server::{BroadcastChannelMessage, Id, NewSubscriberInfo, ServerSentEvent},
 };
-use casper_event_types::{Filter, SIDECAR_VERSION, sse_data::SseData};
+use casper_event_types::{Filter, sse_data::SseData};
 use casper_types::ProtocolVersion;
 use futures::{Future, FutureExt, future};
 use tokio::{
@@ -95,11 +95,6 @@ fn send_legacy_comment(subscriber: &NewSubscriberInfo) -> Result<(), SendError<S
         .initial_events_sender
         .send(ServerSentEvent::legacy_comment_event())
 }
-fn send_sidecar_version(subscriber: &NewSubscriberInfo) -> Result<(), SendError<ServerSentEvent>> {
-    subscriber
-        .initial_events_sender
-        .send(ServerSentEvent::sidecar_version_event(*SIDECAR_VERSION))
-}
 
 fn handle_incoming_data(
     maybe_data: Option<InboundData>,
@@ -150,7 +145,6 @@ async fn register_new_subscriber(
     if subscriber.enable_legacy_filters {
         let _ = send_legacy_comment(subscriber);
     }
-    let _ = send_sidecar_version(subscriber);
     let mut observed_events = false;
     // If the client supplied a "start_from" index, provide the buffered events.
     // If they requested more than is buffered, just provide the whole buffer.

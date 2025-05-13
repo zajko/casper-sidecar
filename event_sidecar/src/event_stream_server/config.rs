@@ -38,10 +38,9 @@ impl Config {
                 .unwrap_or(DEFAULT_MAX_CONCURRENT_SUBSCRIBERS),
         }
     }
-}
 
-impl Default for Config {
-    fn default() -> Self {
+    #[cfg(test)]
+    pub fn test_default() -> Self {
         Config::new(0, None, None)
     }
 }

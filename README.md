@@ -197,20 +197,27 @@ Here is an example configuration for the RPC API server:
 ```toml
 [rpc_server.main_server]
 enable_server = true
-address = '0.0.0.0:7777'
+enable_block_prefetch = true
+ip_address = '0.0.0.0'
+port = 7777
 qps_limit = 100
 max_body_bytes = 2_621_440
 cors_origin = ''
+default_limit_requests = 100
+default_limit_period = "1s"
 
 [rpc_server.node_client]
-address = '0.0.0.0:28101'
+ip_address = '0.0.0.0'
+port = 28101
 max_message_size_bytes = 4_194_304
 message_timeout_secs = 10
 client_access_timeout_secs = 10
+keepalive_timeout_ms = 4_000
 
 [rpc_server.speculative_exec_server]
 enable_server = true
-address = '0.0.0.0:7778'
+ip_address = '0.0.0.0'
+port = 7778
 qps_limit = 1
 max_body_bytes = 2_621_440
 cors_origin = ''
@@ -225,22 +232,29 @@ max_attempts = 30
 
 - `main_server.enable_server` - The RPC API server will be enabled if set to true.
 - `main_server.enable_block_prefetch` - optional (default `false`). If set to `true` the [prefetching blocks feature](#prefetching-blocks-feature) will be enabled
-- `main_server.address` - Address under which the main RPC API server will be available.
+- `main_server.ip_address` - Ip address under which the main RPC API server will be available.
+- `main_server.port` - Port under which the main RPC API server will be available.
 - `main_server.qps_limit` - The maximum number of requests per second.
 - `main_server.max_body_bytes` - Maximum body size of request to API in bytes.
 - `main_server.cors_origin` - Configures the CORS origin.
+- `main_server.default_limit_requests` - Default limit for the JSON-RPC per action limitation: maximum requests permitted for one action in a period of time
+- `main_server.default_limit_period` - Default period of time for the JSON-RPC request limit in human-readable format
 
 - `speculative_exec_server.enable_server` - If set to true, the speculative RPC API server will be enabled.
-- `speculative_exec_server.address` - Address under which the speculative RPC API server will be available.
+- `speculative_exec_server.ip_address` - Ip address under which the speculative RPC API server will be available.
+- `speculative_exec_server.port` - port under which the speculative RPC API server will be available.
 - `speculative_exec_server.qps_limit` - The maximum number of requests per second.
 - `speculative_exec_server.max_body_bytes` - Maximum body size of request to API in bytes.
 - `speculative_exec_server.cors_origin` - Configures the CORS origin.
+- `speculative_exec_server.default_limit_requests` - Default limit for the JSON-RPC per action limitation: maximum requests permitted for one action in a period of time
+- `speculative_exec_server.default_limit_period` - Default period of time for the JSON-RPC request limit in human-readable format
 
-- `node_client.address` - Address of the Casper Node binary port.
+- `node_client.ip_address` - Ip address of the Casper Node binary port.
+- `node_client.port` - Port of the Casper Node binary port.
 - `node_client.max_message_size_bytes` - Maximum binary port message size in bytes.
 - `node_client.message_timeout_secs` - Timeout for the message.
 - `node_client.client_access_timeout_secs` - Timeout for the client connection.
-
+- `node_client.keepalive_timeout_ms` - The amount of ms to wait between sending keepalive requests.
 - `node_client.exponential_backoff.initial_delay_ms` - Timeout after the first broken connection (backoff) in milliseconds.
 - `node_client.exponential_backoff.max_delay_ms` - Maximum timeout after a broken connection in milliseconds.
 - `node_client.exponential_backoff.coefficient` - Coefficient for the exponential backoff. The next timeout is calculated as min(`current_timeout * coefficient`, `max_delay_ms`).
@@ -270,6 +284,8 @@ disable_event_persistence = false
 
 - `sse_server.enable_server` - If set to true, the SSE server will be enabled.
 - `sse_server.emulate_legacy_sse_apis` - A list of legacy Casper node SSE APIs to emulate. The Sidecar will expose SSE endpoints that are compatible with specified versions. Please bear in mind that this feature is an emulation and should be used only for transition periods. In most scenarios, having a 1-to-1 mapping of new messages into old formats is impossible, so this can be a process that loses some data and/or doesn't emit all messages that come from the Casper node. See the [Legacy SSE Emulation](./LEGACY_SSE_EMULATION.md) page for more details.
+- `sse_server.inbound_channel_size` - Optional property, if not set defaults to 1000. This property sets size of the internal buffer of events read from the node.
+- `sse_server.outbound_channel_size` - Optional property, if not set defaults to 1000. This property sets size of the internal buffer of events prepared to be sent to the outbound.
 - `sse_server.disable_event_persistence` - If set to true, SSE server will not send events to storage. This is useful if you want to use sidecar only as a pass-through for sse events. The property is optional, if not defined it will behave as false.
 
 #### Configuring SSE node connections
@@ -320,16 +336,16 @@ no_message_timeout_in_seconds = 60
 sleep_between_keep_alive_checks_in_seconds = 30
 ```
 
-- `ip_address` - The IP address of the node to monitor.
-- `sse_port` - The node's event stream (SSE) port. This [example configuration](./resources/example_configs/EXAMPLE_NODE_CONFIG.toml) uses port `9999`.
-- `rest_port` - The node's REST endpoint for status and metrics. This [example configuration](./resources/example_configs/EXAMPLE_NODE_CONFIG.toml) uses port `8888`.
-- `max_attempts` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the Sidecar will not attempt to connect.
-- `delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
-- `allow_partial_connection` - Determining whether the Sidecar will allow a partial connection to this node.
-- `enable_logging` - This enables the logging of events from the node in question.
-- `connection_timeout_in_seconds` - Number of seconds before the connection request times out. This parameter is optional, and defaults to 5.
-- `no_message_timeout_in_seconds` - Number of seconds after which the connection will be restarted if no bytes were received. This parameter is optional, and defaults to 120.
-- `sleep_between_keep_alive_checks_in_seconds` - Optional parameter specifying the time intervals (in seconds) for checking if the connection is still alive. Defaults to 60.
+- `sse_server.connections.ip_address` - The IP address of the node to monitor.
+- `sse_server.connections.sse_port` - The node's event stream (SSE) port. This [example configuration](./resources/example_configs/EXAMPLE_NODE_CONFIG.toml) uses port `9999`.
+- `sse_server.connections.rest_port` - The node's REST endpoint for status and metrics. This [example configuration](./resources/example_configs/EXAMPLE_NODE_CONFIG.toml) uses port `8888`.
+- `sse_server.connections.max_attempts` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the Sidecar will not attempt to connect.
+- `sse_server.connections.delay_between_retries_in_seconds` - The delay between attempts to connect to the node.
+- `sse_server.connections.allow_partial_connection` - Determining whether the Sidecar will allow a partial connection to this node.
+- `sse_server.connections.enable_logging` - This enables the logging of events from the node in question.
+- `sse_server.connections.connection_timeout_in_seconds` - Number of seconds before the connection request times out. This parameter is optional, and defaults to 5.
+- `sse_server.connections.no_message_timeout_in_seconds` - Number of seconds after which the connection will be restarted if no bytes were received. This parameter is optional, and defaults to 120.
+- `sse_server.connections.sleep_between_keep_alive_checks_in_seconds` - Optional parameter specifying the time intervals (in seconds) for checking if the connection is still alive. Defaults to 60.
 
 #### Configuring SSE legacy emulations
 

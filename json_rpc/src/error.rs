@@ -211,8 +211,9 @@ mod tests {
         context: &'static str,
     }
 
-    impl Default for AdditionalInfo {
-        fn default() -> Self {
+    impl AdditionalInfo {
+        #[cfg(test)]
+        pub fn test_default() -> Self {
             AdditionalInfo {
                 id: 1314,
                 context: "TEST",
@@ -236,7 +237,10 @@ mod tests {
             r#"{"code":-32601,"message":"Method not found","data":null}"#;
         const EXPECTED_WITH_BAD_DATA: &str = r#"{"code":-32603,"message":"Internal error","data":"failed to json-encode additional info in json-rpc error: won't encode"}"#;
 
-        let error_with_data = Error::new(ReservedErrorCode::ParseError, AdditionalInfo::default());
+        let error_with_data = Error::new(
+            ReservedErrorCode::ParseError,
+            AdditionalInfo::test_default(),
+        );
         let encoded = serde_json::to_string(&error_with_data).unwrap();
         assert_eq!(encoded, EXPECTED_WITH_DATA);
 
@@ -261,7 +265,7 @@ mod tests {
             in_reserved_range: false,
         };
 
-        let error_with_data = Error::new(good_error_code, AdditionalInfo::default());
+        let error_with_data = Error::new(good_error_code, AdditionalInfo::test_default());
         let encoded = serde_json::to_string(&error_with_data).unwrap();
         assert_eq!(encoded, EXPECTED_WITH_DATA);
 
@@ -282,7 +286,7 @@ mod tests {
             in_reserved_range: true,
         };
 
-        let error_with_data = Error::new(bad_error_code, AdditionalInfo::default());
+        let error_with_data = Error::new(bad_error_code, AdditionalInfo::test_default());
         let encoded = serde_json::to_string(&error_with_data).unwrap();
         assert_eq!(encoded, EXPECTED);
 

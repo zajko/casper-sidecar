@@ -439,19 +439,19 @@ mod tests {
     }
 
     fn all_components_all_enabled() -> SidecarConfig {
-        let mut rpc_server = RpcServerConfig::default();
+        let mut rpc_server = RpcServerConfig::test_default();
         let speculative_config = SpeculativeExecConfig {
             enable_server: true,
-            ..Default::default()
+            ..SpeculativeExecConfig::test_default()
         };
         rpc_server.speculative_exec_server = Some(speculative_config);
         SidecarConfig {
-            storage: Some(StorageConfig::default()),
-            admin_api_server: Some(AdminApiServerConfig::default()),
-            rest_api_server: Some(RestApiServerConfig::default()),
-            sse_server: Some(SseEventServerConfig::default()),
+            storage: Some(StorageConfig::test_default()),
+            admin_api_server: Some(AdminApiServerConfig::test_default()),
+            rest_api_server: Some(RestApiServerConfig::test_default()),
+            sse_server: Some(SseEventServerConfig::test_default()),
             rpc_server: Some(rpc_server),
-            ..Default::default()
+            ..SidecarConfig::test_default()
         }
     }
 

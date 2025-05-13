@@ -357,7 +357,7 @@ pub mod tests {
     ) -> Result<(PgEmbed, TempDir), AnyhowError> {
         let fetch_settings = PgFetchSettings {
             version: PG_V17,
-            ..Default::default()
+            ..PgFetchSettings::default()
         };
         let pg_res = PgEmbed::new(pg_settings, fetch_settings).await;
         if let Err(e) = pg_res {
