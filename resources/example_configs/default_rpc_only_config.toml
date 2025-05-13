@@ -19,7 +19,7 @@ port = 7777
 qps_limit = 100
 
 # Maximum number of bytes to accept in a single request body.
-max_body_bytes = 2_621_440
+max_body_bytes = 4_000_000
 
 # Specifies which origin will be reported as allowed by RPC server.
 #
@@ -39,50 +39,6 @@ default_limit_period = "1s"
 requests = 200
 period = "1s"
 
-# ========================================================================
-# Configuration options for the speculative execution JSON-RPC HTTP server
-# ========================================================================
-[rpc_server.speculative_exec_server]
-
-# Enables the speculative execution JSON-RPC HTTP server.
-enable_server = true
-
-# Listening address for speculative execution JSON-RPC HTTP server.  If the port
-# is set to 0, a random port will be used.
-#
-# If the specified port cannot be bound to, a random port will be tried instead.
-# If binding fails, the speculative execution JSON-RPC HTTP server will not run,
-# but the node will be otherwise unaffected.
-#
-# The actual bound address will be reported via a log line if logging is enabled.
-ip_address = '0.0.0.0'
-port = 7778
-
-# The global maximum rate of HTTP requests (per second) before they are limited.
-# Request will be delayed to the next one second bucket once limited.
-qps_limit = 1
-
-# Maximum number of bytes to accept in a single request body.
-max_body_bytes = 2_621_440
-
-# Specifies which origin will be reported as allowed by speculative execution server.
-#
-# If left empty, CORS will be disabled.
-# If set to '*', any origin is allowed.
-# Otherwise, only a specified origin is allowed. The given string must conform to the [origin scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin).
-cors_origin = ''
-
-# Default limit for JSON-RPC requests: maximum requests permitted in a period of time (below).
-default_limit_requests = 10
-# Default period of time for the JSON-RPC request limit (above) in human-readable format.
-default_limit_period = "1s"
-
-# Limit for JSON-RPC method "get_status". See description for `default_limit_requests` and
-# `default_limit_period` above.
-[rpc_server.speculative_exec_server.limits.info_get_status]
-requests = 2
-period = "1s"
-
 # =========================================
 # Configuration options for the node client
 # =========================================
@@ -91,7 +47,7 @@ period = "1s"
 ip_address = '127.0.0.1'
 port = 7779
 # Maximum size of a message in bytes.
-max_message_size_bytes = 4_194_304
+max_message_size_bytes = 25_000_000
 # Timeout for a node request in seconds.
 message_timeout_secs = 10
 # Timeout specifying how long to wait for binary port client to be available.
