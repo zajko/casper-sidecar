@@ -47,7 +47,7 @@ period = "1s"
 ip_address = '127.0.0.1'
 port = 7779
 # Maximum size of a message in bytes.
-max_message_size_bytes = 25_000_000
+max_message_size_bytes = 134_217_728
 # Timeout for a node request in seconds.
 message_timeout_secs = 10
 # Timeout specifying how long to wait for binary port client to be available.

@@ -21,7 +21,7 @@ default_limit_period = "1s"
 [rpc_server.node_client]
 ip_address = "3.20.57.210"
 port = 7777
-max_message_size_bytes = 25000000
+max_message_size_bytes = 134217728
 message_timeout_secs = 10
 client_access_timeout_secs = 10
 keepalive_timeout_ms = 4_000
