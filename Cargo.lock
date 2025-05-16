@@ -424,7 +424,7 @@ dependencies = [
 [[package]]
 name = "casper-binary-port"
 version = "1.0.0"
-source = "git+https://github.com/casper-network/casper-node.git?tag=release-2.0.0-rc10#a7e4ff100549d6b34aa6b800812f29313378663b"
+source = "git+https://github.com/casper-network/casper-node.git?branch=release-2.0.1#552154343dc2086f1518e853fd163f8da08b41b4"
 dependencies = [
  "bincode",
  "bytes",
@@ -617,8 +617,8 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "5.0.0"
-source = "git+https://github.com/casper-network/casper-node.git?tag=release-2.0.0-rc10#a7e4ff100549d6b34aa6b800812f29313378663b"
+version = "5.0.1"
+source = "git+https://github.com/casper-network/casper-node.git?branch=release-2.0.1#552154343dc2086f1518e853fd163f8da08b41b4"
 dependencies = [
  "base16",
  "base64 0.13.1",
