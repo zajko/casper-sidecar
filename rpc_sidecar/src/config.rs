@@ -1,14 +1,12 @@
+use casper_json_rpc::{ConfigLimit, nonzero_u32};
 #[cfg(any(feature = "testing", test))]
-use casper_json_rpc::DEFAULT_LIMIT_PERIOD;
-use casper_json_rpc::{ConfigLimit, DEFAULT_LIMIT_REQUESTS, nonzero_u32};
+use casper_json_rpc::{DEFAULT_LIMIT_PERIOD, DEFAULT_LIMIT_REQUESTS};
 use casper_types::TimeDiff;
 use datasize::DataSize;
 use serde::Deserialize;
-use std::{
-    collections::HashMap,
-    net::{IpAddr, Ipv4Addr},
-    num::NonZeroU32,
-};
+#[cfg(any(feature = "testing", test))]
+use std::net::Ipv4Addr;
+use std::{collections::HashMap, net::IpAddr, num::NonZeroU32};
 use thiserror::Error;
 
 use crate::SpeculativeExecConfig;

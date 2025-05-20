@@ -554,6 +554,18 @@ pub enum InvalidTransactionOrDeploy {
     InvalidTransactionInvalidPaymentAmount,
     #[error("Unexpected entry point for Transaction::V1")]
     InvalidTransactionUnexpectedEntryPoint,
+    #[error("Invalid number of reserved slots")]
+    InvalidReservedSlots,
+    #[error("Invalid delegation amount")]
+    InvalidDelegationAmount,
+    #[error("Using `version` for targeting contract version is not supported")]
+    TargetingPackageVersionNotSupported,
+    #[error("Invalid maximum delegation")]
+    InvalidMaximumDelegationAmount,
+    #[error("Invalid minimum delegation")]
+    InvalidMinimumDelegationAmount,
+    #[error("Insufficient amount arg value")]
+    InsufficientAmountArgValue,
 }
 
 impl From<ErrorCode> for InvalidTransactionOrDeploy {
@@ -700,6 +712,14 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             ErrorCode::InvalidTransactionUnexpectedEntryPoint => {
                 Self::InvalidTransactionUnexpectedEntryPoint
             }
+            ErrorCode::InvalidReservedSlots => Self::InvalidReservedSlots,
+            ErrorCode::InvalidDelegationAmount => Self::InvalidDelegationAmount,
+            ErrorCode::TargetingPackageVersionNotSupported => {
+                Self::TargetingPackageVersionNotSupported
+            }
+            ErrorCode::InvalidMaximumDelegationAmount => Self::InvalidMaximumDelegationAmount,
+            ErrorCode::InvalidMinimumDelegationAmount => Self::InvalidMinimumDelegationAmount,
+            ErrorCode::InsufficientAmountArgValue => Self::InsufficientAmountArgValue,
             _ => Self::TransactionOrDeployUnspecified,
         }
     }
@@ -881,6 +901,12 @@ impl Error {
                 | ErrorCode::InvalidDeployInvalidPaymentAmount
                 | ErrorCode::InvalidTransactionInsufficientBurnAmount
                 | ErrorCode::InvalidTransactionInvalidPaymentAmount
+                | ErrorCode::InvalidReservedSlots
+                | ErrorCode::InvalidDelegationAmount
+                | ErrorCode::TargetingPackageVersionNotSupported
+                | ErrorCode::InvalidMaximumDelegationAmount
+                | ErrorCode::InvalidMinimumDelegationAmount
+                | ErrorCode::InsufficientAmountArgValue
                 | ErrorCode::InvalidTransactionUnexpectedEntryPoint),
             ) => Self::InvalidTransaction(InvalidTransactionOrDeploy::from(err)),
             Ok(ErrorCode::RequestThrottled) => Self::RequestThrottled,
