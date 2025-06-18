@@ -559,8 +559,6 @@ pub enum InvalidTransactionOrDeploy {
     #[error("Invalid delegation amount")]
     InvalidDelegationAmount,
     #[error("Using `version` for targeting contract version is not supported")]
-    TargetingPackageVersionNotSupported,
-    #[error("Invalid maximum delegation")]
     InvalidMaximumDelegationAmount,
     #[error("Invalid minimum delegation")]
     InvalidMinimumDelegationAmount,
@@ -714,9 +712,6 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             }
             ErrorCode::InvalidReservedSlots => Self::InvalidReservedSlots,
             ErrorCode::InvalidDelegationAmount => Self::InvalidDelegationAmount,
-            ErrorCode::TargetingPackageVersionNotSupported => {
-                Self::TargetingPackageVersionNotSupported
-            }
             ErrorCode::InvalidMaximumDelegationAmount => Self::InvalidMaximumDelegationAmount,
             ErrorCode::InvalidMinimumDelegationAmount => Self::InvalidMinimumDelegationAmount,
             ErrorCode::InsufficientAmountArgValue => Self::InsufficientAmountArgValue,
@@ -803,6 +798,8 @@ pub enum Error {
     ConnectionLost,
     #[error("transaction has malformed binary representation")]
     TransactionHasMalformedBinaryRepresentation,
+    #[error("the transaction invocation target is unsupported under V2 runtime")]
+    UnsupportedInvocationTarget,
 }
 
 impl Error {
@@ -903,7 +900,6 @@ impl Error {
                 | ErrorCode::InvalidTransactionInvalidPaymentAmount
                 | ErrorCode::InvalidReservedSlots
                 | ErrorCode::InvalidDelegationAmount
-                | ErrorCode::TargetingPackageVersionNotSupported
                 | ErrorCode::InvalidMaximumDelegationAmount
                 | ErrorCode::InvalidMinimumDelegationAmount
                 | ErrorCode::InsufficientAmountArgValue
@@ -939,6 +935,7 @@ impl Error {
                     code: ErrorCode::NoError as u16,
                 }
             }
+            Ok(ErrorCode::UnsupportedInvocationTarget) => Self::UnsupportedInvocationTarget,
             Err(err) => Self::UnexpectedNodeError {
                 message: err.to_string(),
                 code,
