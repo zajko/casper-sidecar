@@ -1,13 +1,13 @@
 [package]
 name = "casper-rpc-sidecar"
 version = "1.0.5"
-authors = ["Jacek Malec <jacek@casperlabs.io>"]
+authors = ["Jakub Zajkowski <jakub@casper.network>"]
 edition = "2024"
 description = "The Casper blockchain RPC sidecard"
 documentation = "https://docs.rs/casper-rpc-sidecar"
 readme = "README.md"
-homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/casper-node/tree/master/rpc_sidecard"
+homepage = "https://docs.casper.network"
+repository = "https://github.com/casper-network/casper-sidecar/tree/dev/rpc_sidecar"
 license = "Apache-2.0"
 
 [dependencies]

@@ -1,6 +1,6 @@
 [package]
 name = "metrics"
-authors = ["Jakub Zajkowski <jakub@casperlabs.io>"]
+authors = ["Jakub Zajkowski <jakub@casper.network>"]
 version = "1.0.5"
 edition = "2024"
 readme = "README.md"
