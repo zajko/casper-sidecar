@@ -1,10 +1,9 @@
 [package]
 name = "casper-event-sidecar"
 authors = [
-    "George Williamson <george@casperlabs.io>",
-    "Jakub Zajkowski <jakub@casperlabs.io>",
+    "Jakub Zajkowski <jakub@casper.network>",
 ]
-version = "1.0.4"
+version = "1.0.5"
 edition = "2024"
 readme = "README.md"
 description = "App for storing and republishing sse events of a casper node"
