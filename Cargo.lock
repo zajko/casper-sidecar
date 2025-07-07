@@ -423,8 +423,8 @@ dependencies = [
 
 [[package]]
 name = "casper-binary-port"
-version = "1.1.0"
-source = "git+https://github.com/casper-network/casper-node.git?branch=dev#f4a3ce09d80f88153e33cb115e6cb82099fd0470"
+version = "1.1.1"
+source = "git+https://github.com/casper-network/casper-node.git?branch=dev#814dc4c4e70e61e6df753cc90ffca0d1681e5786"
 dependencies = [
  "bincode",
  "bytes",
@@ -443,7 +443,7 @@ dependencies = [
 
 [[package]]
 name = "casper-event-listener"
-version = "1.0.5"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -469,7 +469,7 @@ dependencies = [
 
 [[package]]
 name = "casper-event-sidecar"
-version = "1.0.5"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -517,7 +517,7 @@ dependencies = [
 
 [[package]]
 name = "casper-event-types"
-version = "1.0.5"
+version = "2.0.0"
 dependencies = [
  "casper-types",
  "mockall",
@@ -531,7 +531,7 @@ dependencies = [
 
 [[package]]
 name = "casper-json-rpc"
-version = "1.1.0"
+version = "2.0.0"
 dependencies = [
  "bytes",
  "casper-types",
@@ -552,7 +552,7 @@ dependencies = [
 
 [[package]]
 name = "casper-rpc-sidecar"
-version = "1.0.5"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "assert-json-diff",
@@ -593,7 +593,7 @@ dependencies = [
 
 [[package]]
 name = "casper-sidecar"
-version = "1.0.5"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -617,8 +617,8 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "6.0.0"
-source = "git+https://github.com/casper-network/casper-node.git?branch=dev#f4a3ce09d80f88153e33cb115e6cb82099fd0470"
+version = "6.0.1"
+source = "git+https://github.com/casper-network/casper-node.git?branch=dev#814dc4c4e70e61e6df753cc90ffca0d1681e5786"
 dependencies = [
  "base16",
  "base64 0.13.1",
@@ -2303,7 +2303,7 @@ checksum = "32a282da65faaf38286cf3be983213fcf1d2e2a58700e808f83f4ea9a4804bc0"
 
 [[package]]
 name = "metrics"
-version = "1.0.5"
+version = "2.0.0"
 dependencies = [
  "prometheus",
 ]
