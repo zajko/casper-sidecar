@@ -9,11 +9,13 @@ All notable changes to this project will be documented in this file. The format 
 [comment]: <> (Fixed: any bug fixes)
 [comment]: <> (Security: in case of vulnerabilities)
 
-## [Unreleased]
+## [2.0.0] -
 
-### Removed
+### Added
 
-- Removed `/sidecar` sse filter endpoint
+- `account_put_transaction` now handles `TransactionInvocationTarget::ByPackageHash` with `protocol_version_major`
+- `account_put_transaction` now handles `TransactionInvocationTarget::ByPackageName` with `protocol_version_major`
+- Compatible with `casper-types` in 6.0.1 version
 
 ## [1.0.4] -
 
