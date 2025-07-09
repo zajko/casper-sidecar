@@ -1,6 +1,6 @@
 [package]
 name = "casper-rpc-sidecar"
-version = "1.0.5"
+version = "2.0.0"
 authors = ["Jakub Zajkowski <jakub@casper.network>"]
 edition = "2024"
 description = "The Casper blockchain RPC sidecard"
@@ -18,7 +18,7 @@ async-trait = "0.1"
 base16 = "0.2"
 bincode = "1"
 bytes = "1.10"
-casper-json-rpc = { version = "1.1.0", path = "../json_rpc" }
+casper-json-rpc.workspace = true
 casper-binary-port.workspace = true
 datasize = { workspace = true, features = ["detailed", "fake_clock-types"] }
 derive-new = { workspace = true }

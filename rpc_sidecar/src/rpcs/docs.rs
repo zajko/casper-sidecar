@@ -36,7 +36,7 @@ const DEFINITIONS_PATH: &str = "#/components/schemas/";
 pub(crate) const OPEN_RPC_VERSION: &str = "1.0.0-rc1";
 
 pub(crate) static CONTACT: LazyLock<OpenRpcContactField> = LazyLock::new(|| OpenRpcContactField {
-    name: "Casper Labs".to_string(),
+    name: "Casper Association".to_string(),
     url: "https://docs.casper.network".to_string(),
 });
 
@@ -550,7 +550,7 @@ mod tests {
 
     fn check_optional_params_fields<T: RpcWithOptionalParams>() -> Vec<SchemaParam> {
         let contact = OpenRpcContactField {
-            name: "Casper Labs".to_string(),
+            name: "Casper Association".to_string(),
             url: "https://docs.casper.network".to_string(),
         };
         let license = OpenRpcLicenseField {

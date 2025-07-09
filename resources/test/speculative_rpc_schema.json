@@ -5,7 +5,7 @@
     "title": "Speculative execution client API of Casper Node",
     "description": "This describes the JSON-RPC 2.0 API of the speculative execution functinality of a node on the Casper network.",
     "contact": {
-      "name": "Casper Labs",
+      "name": "Casper Association",
       "url": "https://docs.casper.network"
     },
     "license": {
