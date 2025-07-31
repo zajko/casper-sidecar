@@ -65,12 +65,6 @@ pub enum Error {
     SpecExecReturnedNothing,
     #[error("unexpected bytesrepr failure: {0}")]
     BytesreprFailure(bytesrepr::Error),
-    #[error("the bid state query returned nothing")]
-    BidQueryNoResponse,
-    #[error("expected v1 snapshot in auction state")]
-    ExpectedV1Snapshot,
-    #[error("expected v2 snapshot in auction state")]
-    ExpectedV2Snapshot,
 }
 
 impl Error {
@@ -123,10 +117,7 @@ impl Error {
             | Error::InvalidAuctionState
             | Error::InvalidNamedKeys(_)
             | Error::InvalidEntryPoints(_)
-            | Error::BytesreprFailure(_)
-            | Error::BidQueryNoResponse
-            | Error::ExpectedV1Snapshot
-            | Error::ExpectedV2Snapshot => None,
+            | Error::BytesreprFailure(_) => None,
         }
     }
 }

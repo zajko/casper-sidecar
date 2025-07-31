@@ -1321,8 +1321,9 @@ pub(crate) fn era_validators_from_snapshot(
 ) -> Result<EraValidators, RpcError> {
     if is_1x {
         //handle as pre-condor
+        //TODO add some context to the error
         let seigniorage: BTreeMap<EraId, SeigniorageRecipientsV1> =
-            snapshot.into_t().map_err(|_| Error::ExpectedV1Snapshot)?;
+            snapshot.into_t().map_err(|_| Error::InvalidAuctionState)?;
         Ok(seigniorage
             .into_iter()
             .map(|(era_id, recipients)| {
@@ -1337,8 +1338,9 @@ pub(crate) fn era_validators_from_snapshot(
             .collect())
     } else {
         //handle as condor
+        //TODO add some context to the error
         let seigniorage: BTreeMap<EraId, SeigniorageRecipientsV2> =
-            snapshot.into_t().map_err(|_| Error::ExpectedV2Snapshot)?;
+            snapshot.into_t().map_err(|_| Error::InvalidAuctionState)?;
         Ok(seigniorage
             .into_iter()
             .map(|(era_id, recipients)| {
