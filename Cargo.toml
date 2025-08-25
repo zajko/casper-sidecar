@@ -19,11 +19,11 @@ casper-types = { version = "6.0.1", features = [
     "std",
 ] }
 casper-binary-port = { version = "1.2.0" }
-casper-event-listener = { path = "./listener", version = "2" }
-casper-event-sidecar = { path = "./event_sidecar", version = "2" }
-casper-event-types = { path = "./types", version = "2" }
-casper-rpc-sidecar = { path = "./rpc_sidecar", version = "2" }
-casper-json-rpc = { path = "./json_rpc", version = "2" }
+casper-event-listener = { path = "./listener", version = "3" }
+casper-event-sidecar = { path = "./event_sidecar", version = "3" }
+casper-event-types = { path = "./types", version = "3" }
+casper-rpc-sidecar = { path = "./rpc_sidecar", version = "3" }
+casper-json-rpc = { path = "./json_rpc", version = "3" }
 datasize = "0.2"
 derive-new = "0.7"
 futures = "0"
@@ -34,7 +34,7 @@ governor = { version = "0.10", default-features = false, features = [
 ] }
 itertools = "0.14"
 jsonschema = "0.30"
-metrics = { path = "./metrics", version = "2" }
+metrics = { path = "./metrics", version = "3" }
 rand = "0.8"
 serde = { version = "1", default-features = false }
 thiserror = "2"

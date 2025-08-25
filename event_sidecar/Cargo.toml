@@ -3,7 +3,7 @@ name = "casper-event-sidecar"
 authors = [
     "Jakub Zajkowski <jakub@casper.network>",
 ]
-version = "2.0.0"
+version = "3.0.0"
 edition = "2024"
 readme = "README.md"
 description = "App for storing and republishing sse events of a casper node"
