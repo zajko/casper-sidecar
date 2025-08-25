@@ -150,8 +150,7 @@ fn maybe_tanslate_stored_value(stored_value: &StoredValue) -> Option<TransformKi
         | StoredValue::MessageTopic(_)
         | StoredValue::Message(_)
         | StoredValue::Prepayment(_)
-        | StoredValue::EntryPoint(_)
-        | StoredValue::RawBytes(_) => None,
+        | StoredValue::EntryPoint(_) => None,
     }
 }
 
