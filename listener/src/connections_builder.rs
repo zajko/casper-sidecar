@@ -29,9 +29,10 @@ pub struct DefaultConnectionsBuilder {
     pub max_connection_attempts: usize,
     pub connection_timeout: Duration,
     pub sse_event_sender: Sender<SseEvent>,
-    pub ip_address: IpAddr,
+    pub ip_address: String,
     pub sse_port: u16,
     pub allow_partial_connection: bool,
+    pub enable_dns_resolution: bool,
 }
 
 #[async_trait]

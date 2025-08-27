@@ -1,7 +1,7 @@
 #[cfg(test)]
 use portpicker::Port;
 use std::{
-    net::{IpAddr, Ipv4Addr},
+    net::Ipv4Addr,
     sync::{Arc, Mutex},
 };
 use tempfile::TempDir;
@@ -98,14 +98,14 @@ impl TestingConfig {
 
     pub(crate) fn add_connection(
         &mut self,
-        ip_address: Option<IpAddr>,
+        ip_address: Option<String>,
         sse_port: Option<u16>,
         rest_port: Option<u16>,
     ) -> Port {
         let random_port_for_sse = get_port();
         let random_port_for_rest = get_port();
         let connection = Connection {
-            ip_address: ip_address.unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
+            ip_address: ip_address.unwrap_or_else(|| Ipv4Addr::LOCALHOST.to_string()),
             sse_port: sse_port.unwrap_or(random_port_for_sse),
             rest_port: rest_port.unwrap_or(random_port_for_rest),
             max_attempts: 2,
@@ -115,6 +115,7 @@ impl TestingConfig {
             connection_timeout_in_seconds: Some(100),
             sleep_between_keep_alive_checks_in_seconds: Some(100),
             no_message_timeout_in_seconds: Some(100),
+            enable_dns_resolution: None,
         };
         self.event_server_config.connections.push(connection);
         random_port_for_sse

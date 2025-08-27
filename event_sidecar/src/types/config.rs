@@ -1,6 +1,6 @@
 #[cfg(any(feature = "testing", test))]
 use std::convert::TryInto;
-use std::{convert::TryFrom, net::IpAddr, num::ParseIntError, string::ToString};
+use std::{convert::TryFrom, num::ParseIntError, string::ToString};
 
 use serde::Deserialize;
 
@@ -65,7 +65,9 @@ impl SseEventServerConfig {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Connection {
-    pub ip_address: IpAddr,
+    /// IP address or dns name of the node. To enable dns name resolving please set `enable_dns_resolution: true`
+    #[serde(alias = "host")]
+    pub ip_address: String,
     pub sse_port: u16,
     pub rest_port: u16,
     pub max_attempts: usize,
@@ -75,6 +77,7 @@ pub struct Connection {
     pub connection_timeout_in_seconds: Option<usize>,
     pub sleep_between_keep_alive_checks_in_seconds: Option<usize>,
     pub no_message_timeout_in_seconds: Option<usize>,
+    pub enable_dns_resolution: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
@@ -352,7 +355,7 @@ mod tests {
         #[must_use]
         pub fn example_connection_1() -> Connection {
             Connection {
-                ip_address: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                ip_address: Ipv4Addr::LOCALHOST.to_string(),
                 sse_port: 18101,
                 rest_port: 14101,
                 max_attempts: 10,
@@ -362,13 +365,14 @@ mod tests {
                 connection_timeout_in_seconds: None,
                 sleep_between_keep_alive_checks_in_seconds: None,
                 no_message_timeout_in_seconds: None,
+                enable_dns_resolution: None,
             }
         }
 
         #[must_use]
         pub fn example_connection_2() -> Connection {
             Connection {
-                ip_address: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                ip_address: Ipv4Addr::LOCALHOST.to_string(),
                 sse_port: 18102,
                 rest_port: 14102,
                 max_attempts: 10,
@@ -378,13 +382,14 @@ mod tests {
                 connection_timeout_in_seconds: None,
                 sleep_between_keep_alive_checks_in_seconds: None,
                 no_message_timeout_in_seconds: None,
+                enable_dns_resolution: None,
             }
         }
 
         #[must_use]
         pub fn example_connection_3() -> Connection {
             Connection {
-                ip_address: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                ip_address: Ipv4Addr::LOCALHOST.to_string(),
                 sse_port: 18103,
                 rest_port: 14103,
                 max_attempts: 10,
@@ -394,12 +399,13 @@ mod tests {
                 connection_timeout_in_seconds: Some(3),
                 sleep_between_keep_alive_checks_in_seconds: None,
                 no_message_timeout_in_seconds: None,
+                enable_dns_resolution: None,
             }
         }
 
         pub fn test_default() -> Self {
             Self {
-                ip_address: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                ip_address: Ipv4Addr::LOCALHOST.to_string(),
                 sse_port: 18101,
                 rest_port: 14101,
                 allow_partial_connection: false,
@@ -409,6 +415,7 @@ mod tests {
                 connection_timeout_in_seconds: None,
                 sleep_between_keep_alive_checks_in_seconds: None,
                 no_message_timeout_in_seconds: None,
+                enable_dns_resolution: None,
             }
         }
     }

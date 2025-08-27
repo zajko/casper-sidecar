@@ -249,7 +249,8 @@ max_attempts = 30
 - `speculative_exec_server.default_limit_requests` - Default limit for the JSON-RPC per action limitation: maximum requests permitted for one action in a period of time
 - `speculative_exec_server.default_limit_period` - Default period of time for the JSON-RPC request limit in human-readable format
 
-- `node_client.ip_address` - Ip address of the Casper Node binary port.
+- `node_client.ip_address` - Ip address of the Casper Node binary port. If `node_client.enable_dns_resolution` is set to `true` this can also be a DNS-resolvable hostname. This field is considered deprecated and will be removed in a future release. Please use `node_client.host` instead.
+- `node_client.host` - Ip address or dns name of the Casper Node binary port. This field will resolve a dns name only if `node_client.enable_dns_resolution: true`. It is an alias to `node_client.ip_address` which in future will replace it. Both of these fields cannot be declared simultaneously.
 - `node_client.port` - Port of the Casper Node binary port.
 - `node_client.max_message_size_bytes` - Maximum binary port message size in bytes.
 - `node_client.message_timeout_secs` - Timeout for the message.
@@ -259,6 +260,7 @@ max_attempts = 30
 - `node_client.exponential_backoff.max_delay_ms` - Maximum timeout after a broken connection in milliseconds.
 - `node_client.exponential_backoff.coefficient` - Coefficient for the exponential backoff. The next timeout is calculated as min(`current_timeout * coefficient`, `max_delay_ms`).
 - `node_client.exponential_backoff.max_attempts` - Maximum number of times to try to reconnect to the binary port of the node.
+- `node_client.enable_dns_resolution` - bool flag that will enable dns resolution of `node_client.ip_address` or `node_client.host`. It is optional, and if not provided will default to `false`.
 
 #### Prefetching blocks feature
 
@@ -336,7 +338,8 @@ no_message_timeout_in_seconds = 60
 sleep_between_keep_alive_checks_in_seconds = 30
 ```
 
-- `sse_server.connections.ip_address` - The IP address of the node to monitor.
+- `sse_server.connections.ip_address` - Ip address of the server which exposes the SSE feed. If `sse_server.connections.enable_dns_resolution` is set to `true` this can also be a DNS-resolvable hostname. This field is considered deprecated and will be removed in a future release. Please use `sse_server.connections.host` instead.
+- `sse_server.connections.host` - Ip address of the server which exposes the SSE feed. If `sse_server.connections.enable_dns_resolution` is set to `true` this can also be a DNS-resolvable hostname. It is an alias to `sse_server.connections.ip_address` which in future will replace it. Both of these fields cannot be declared simultaneously.
 - `sse_server.connections.sse_port` - The node's event stream (SSE) port. This [example configuration](./resources/example_configs/EXAMPLE_NODE_CONFIG.toml) uses port `9999`.
 - `sse_server.connections.rest_port` - The node's REST endpoint for status and metrics. This [example configuration](./resources/example_configs/EXAMPLE_NODE_CONFIG.toml) uses port `8888`.
 - `sse_server.connections.max_attempts` - The maximum number of attempts the Sidecar will make to connect to the node. If set to `0`, the Sidecar will not attempt to connect.
@@ -346,6 +349,7 @@ sleep_between_keep_alive_checks_in_seconds = 30
 - `sse_server.connections.connection_timeout_in_seconds` - Number of seconds before the connection request times out. This parameter is optional, and defaults to 5.
 - `sse_server.connections.no_message_timeout_in_seconds` - Number of seconds after which the connection will be restarted if no bytes were received. This parameter is optional, and defaults to 120.
 - `sse_server.connections.sleep_between_keep_alive_checks_in_seconds` - Optional parameter specifying the time intervals (in seconds) for checking if the connection is still alive. Defaults to 60.
+- `sse_server.connections.enable_dns_resolution` - bool flag that will enable dns resolution of `sse_server.connections.ip_address` or `sse_server.connections.host`. It is optional, and if not provided will default to `false`.
 
 #### Configuring SSE legacy emulations
 

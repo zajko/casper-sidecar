@@ -15,7 +15,7 @@ use casper_event_types::Filter;
 use connection_manager::{ConnectionManager, ConnectionManagerError};
 use connection_tasks::ConnectionTasks;
 use connections_builder::{ConnectionsBuilder, DefaultConnectionsBuilder};
-use std::{collections::HashMap, net::IpAddr, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 use tokio::{
     sync::{
         Mutex,
@@ -45,7 +45,13 @@ type FilterWithEventId = Sender<(Filter, u32)>;
 type CurrentFilterToIdHolder = Arc<Mutex<HashMap<Filter, u32>>>;
 impl EventListenerBuilder {
     pub fn build(&self) -> Result<EventListener, Error> {
-        let status_endpoint = status_endpoint(self.node.ip_address, self.node.rest_port)?;
+        let &NodeConnectionInterface {
+            enable_dns_resolution,
+            sse_port,
+            ref ip_address,
+            ..
+        } = &self.node;
+        let status_endpoint = status_endpoint(ip_address.clone(), self.node.rest_port)?;
         let version_fetcher = Arc::new(for_status_endpoint(status_endpoint));
         let connections_builder = Arc::new(DefaultConnectionsBuilder {
             sleep_between_keep_alive_checks: self.sleep_between_keep_alive_checks,
@@ -53,9 +59,10 @@ impl EventListenerBuilder {
             max_connection_attempts: self.max_connection_attempts,
             connection_timeout: self.connection_timeout,
             sse_event_sender: self.sse_event_sender.clone(),
-            ip_address: self.node.ip_address,
-            sse_port: self.node.sse_port,
+            ip_address: ip_address.clone(),
+            sse_port,
             allow_partial_connection: self.allow_partial_connection,
+            enable_dns_resolution,
         });
         Ok(EventListener {
             node_metadata: NodeMetadata::default(),
@@ -332,8 +339,8 @@ fn log_status_for_event_listener(status: EventListenerStatus, event_listener: &E
     status.log_status(node_address.as_str(), sse_port);
 }
 
-fn status_endpoint(ip_address: IpAddr, rest_port: u16) -> Result<Url, Error> {
-    let status_endpoint_str = format!("http://{ip_address}:{rest_port}/status");
+fn status_endpoint(ip_address_or_hostname: String, rest_port: u16) -> Result<Url, Error> {
+    let status_endpoint_str = format!("http://{ip_address_or_hostname}:{rest_port}/status");
     Url::from_str(&status_endpoint_str).map_err(Error::from)
 }
 

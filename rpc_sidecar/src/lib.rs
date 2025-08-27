@@ -21,12 +21,13 @@ use casper_types::{
 pub use config::{FieldParseError, NodeClientConfig, RpcConfig, RpcServerConfig};
 use futures::{FutureExt, future::BoxFuture};
 pub use http_server::run as run_rpc_server;
-use node_client::FramedNodeClient;
 pub use node_client::{Error as ClientError, NodeClient};
 pub use speculative_exec_config::Config as SpeculativeExecConfig;
 pub use speculative_exec_server::run as run_speculative_exec_server;
 use tokio::sync::broadcast::Sender;
 use tracing::error;
+
+use crate::node_client::start_framed_node_client;
 /// Minimal casper protocol version supported by this sidecar.
 pub const SUPPORTED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(2, 0, 0);
 
@@ -40,7 +41,7 @@ pub async fn build_rpc_server<'a>(
     sidecar_event_sender: Sender<SidecarEvent>,
 ) -> MaybeRpcServerReturn<'a> {
     let (node_client, reconnect_loop, keepalive_loop) =
-        FramedNodeClient::new(config.node_client.clone(), maybe_network_name).await?;
+        start_framed_node_client(config.node_client.clone(), maybe_network_name).await?;
     let mut futures = Vec::new();
     let main_server_config = config.main_server;
     let node_client: Arc<dyn NodeClient> = if main_server_config.enable_block_prefetch {

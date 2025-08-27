@@ -1,5 +1,10 @@
+pub(crate) mod socket_resolver;
 use crate::{
-    NodeClientConfig, config::ExponentialBackoffConfig, encode_request, parse_response,
+    NodeClientConfig,
+    config::ExponentialBackoffConfig,
+    encode_request,
+    node_client::socket_resolver::{SocketResolver, build_socket_resolver},
+    parse_response,
     rpcs::action::query_bid::QueryBid,
 };
 use anyhow::Error as AnyhowError;
@@ -30,7 +35,6 @@ use serde::de::DeserializeOwned;
 use std::{
     convert::{TryFrom, TryInto},
     fmt::{self, Display, Formatter},
-    net::{IpAddr, SocketAddr},
     sync::{
         Arc,
         atomic::{AtomicU16, Ordering},
@@ -842,6 +846,8 @@ pub enum Error {
     UnsupportedInvocationTarget,
     #[error("Sandboxed execution failed")]
     SandboxedExecutionFailed,
+    #[error("Node client not initialized properly")]
+    NotInitialized,
 }
 
 impl Error {
@@ -1011,62 +1017,112 @@ impl<T> Notify<T> {
     }
 }
 
-pub struct FramedNodeClient {
+pub async fn start_framed_node_client(
+    config: NodeClientConfig,
+    maybe_network_name: Option<String>,
+) -> Result<
+    (
+        Arc<FramedNodeClient>,
+        impl Future<Output = Result<(), AnyhowError>>,
+        impl Future<Output = Result<(), AnyhowError>>,
+    ),
+    AnyhowError,
+> {
+    let socket_resolver = build_socket_resolver(&config).into();
+    start_framed_node_client_inner(config, maybe_network_name, socket_resolver).await
+}
+
+async fn start_framed_node_client_inner(
+    config: NodeClientConfig,
+    maybe_network_name: Option<String>,
+    socket_resolver: Arc<dyn SocketResolver>,
+) -> Result<
+    (
+        Arc<FramedNodeClient>,
+        impl Future<Output = Result<(), AnyhowError>>,
+        impl Future<Output = Result<(), AnyhowError>>,
+    ),
+    AnyhowError,
+> {
+    let stream = Arc::new(RwLock::new(
+        FramedNodeClient::connect_with_retries(
+            &config.exponential_backoff,
+            config.max_message_size_bytes,
+            Arc::clone(&socket_resolver),
+        )
+        .await?,
+    ));
+    let reconnect = Notify::<Reconnect>::new();
+    let reconnect_loop = FramedNodeClient::reconnect_loop(
+        config.clone(),
+        Arc::clone(&stream),
+        Arc::clone(&reconnect),
+        Arc::clone(&socket_resolver),
+    );
+    let framed_node_client = Arc::new(FramedNodeClient::new(
+        config.clone(),
+        socket_resolver,
+        reconnect,
+        stream,
+    ));
+    // validate network name
+    if let Some(network_name) = maybe_network_name {
+        let node_status = framed_node_client.read_node_status().await?;
+        if node_status.chainspec_name != network_name {
+            let msg = format!(
+                "Network name {} does't match name {network_name} configured for node RPC connection",
+                node_status.chainspec_name
+            );
+            error!("{msg}");
+            return Err(AnyhowError::msg(msg));
+        }
+    }
+    let keepalive_timeout = Duration::from_millis(config.keepalive_timeout_ms);
+    let keepalive_loop = keepalive_loop(Arc::clone(&framed_node_client), keepalive_timeout);
+
+    Ok((framed_node_client, reconnect_loop, keepalive_loop))
+}
+
+async fn keepalive_loop(
+    client: Arc<FramedNodeClient>,
+    keepalive_timeout: Duration,
+) -> Result<(), AnyhowError> {
+    loop {
+        tokio::time::sleep(keepalive_timeout).await;
+        let _ = client
+            .send_request(Command::Get(GetRequest::Information {
+                info_type_tag: InformationRequestTag::ProtocolVersion.into(),
+                key: Vec::new(),
+            }))
+            .await; // We ignore failure from send_request because
+        // keepalive should continue trying indefinitely.
+        // Other mechanisms of the FramedNodeClient are
+        // responsible for shutting down sidecar on retry exhaustion
+    }
+}
+
+pub(crate) struct FramedNodeClient {
     client: Arc<RwLock<Framed<TcpStream, BinaryMessageCodec>>>,
     reconnect: Arc<Notify<Reconnect>>,
     config: NodeClientConfig,
     current_request_id: Arc<AtomicU16>,
+    socket_resolver: Arc<dyn SocketResolver>,
 }
 
 impl FramedNodeClient {
-    pub async fn new(
+    fn new(
         config: NodeClientConfig,
-        maybe_network_name: Option<String>,
-    ) -> Result<
-        (
-            Arc<Self>,
-            impl Future<Output = Result<(), AnyhowError>>,
-            impl Future<Output = Result<(), AnyhowError>>,
-        ),
-        AnyhowError,
-    > {
-        let stream = Arc::new(RwLock::new(
-            Self::connect_with_retries(
-                &config.ip_address,
-                config.port,
-                &config.exponential_backoff,
-                config.max_message_size_bytes,
-            )
-            .await?,
-        ));
-
-        let reconnect = Notify::<Reconnect>::new();
-
-        let reconnect_loop =
-            Self::reconnect_loop(config.clone(), Arc::clone(&stream), Arc::clone(&reconnect));
-        let keepalive_timeout = Duration::from_millis(config.keepalive_timeout_ms);
-        let node_client = Arc::new(Self {
-            client: Arc::clone(&stream),
+        socket_resolver: Arc<dyn SocketResolver>,
+        reconnect: Arc<Notify<Reconnect>>,
+        client: Arc<RwLock<Framed<TcpStream, BinaryMessageCodec>>>,
+    ) -> Self {
+        Self {
+            client,
             reconnect,
             config,
             current_request_id: AtomicU16::new(INITIAL_REQUEST_ID).into(),
-        });
-        let keepalive_loop = Self::keepalive_loop(node_client.clone(), keepalive_timeout);
-
-        // validate network name
-        if let Some(network_name) = maybe_network_name {
-            let node_status = node_client.read_node_status().await?;
-            if network_name != node_status.chainspec_name {
-                let msg = format!(
-                    "Network name {} does't match name {network_name} configured for node RPC connection",
-                    node_status.chainspec_name
-                );
-                error!("{msg}");
-                return Err(AnyhowError::msg(msg));
-            }
+            socket_resolver,
         }
-
-        Ok((node_client, reconnect_loop, keepalive_loop))
     }
 
     fn next_id(&self) -> u16 {
@@ -1077,33 +1133,16 @@ impl FramedNodeClient {
         config: NodeClientConfig,
         client: Arc<RwLock<Framed<TcpStream, BinaryMessageCodec>>>,
         reconnect: Arc<Notify<Reconnect>>,
+        socket_resolver: Arc<dyn SocketResolver>,
     ) -> Result<(), AnyhowError> {
         loop {
             tokio::select! {
                 () = reconnect.notified() => {
                     let mut lock = client.write().await;
-                    let new_client = Self::reconnect(&config.clone()).await?;
+                    let new_client = Self::reconnect(&config.clone(), socket_resolver.clone()).await?;
                     *lock = new_client;
                 },
             }
-        }
-    }
-
-    async fn keepalive_loop(
-        client: Arc<dyn NodeClient>,
-        keepalive_timeout: Duration,
-    ) -> Result<(), AnyhowError> {
-        loop {
-            tokio::time::sleep(keepalive_timeout).await;
-            let _ = client
-                .send_request(Command::Get(GetRequest::Information {
-                    info_type_tag: InformationRequestTag::ProtocolVersion.into(),
-                    key: Vec::new(),
-                }))
-                .await; // We ignore failure from send_request because
-            // keepalive should continue trying indefinitely.
-            // Other mechanisms of the FramedNodeClient are
-            // responsible for shutting down sidecar on retry exhaustion
         }
     }
 
@@ -1185,16 +1224,15 @@ impl FramedNodeClient {
     }
 
     async fn connect_with_retries(
-        ip_address: &IpAddr,
-        port: u16,
         backoff_config: &ExponentialBackoffConfig,
         max_message_size_bytes: u32,
+        socker_addr_resolver: Arc<dyn SocketResolver>,
     ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
         let mut wait = backoff_config.initial_delay_ms;
         let max_attempts = &backoff_config.max_attempts;
-        let tcp_socket = SocketAddr::new(*ip_address, port);
         let mut current_attempt = 1;
         loop {
+            let tcp_socket = socker_addr_resolver.resolve_socket().await?;
             match TcpStream::connect(tcp_socket).await {
                 Ok(stream) => {
                     return Ok(Framed::new(
@@ -1220,15 +1258,15 @@ impl FramedNodeClient {
 
     async fn reconnect_internal(
         config: &NodeClientConfig,
+        socket_resolver: Arc<dyn SocketResolver>,
     ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
         let disconnected_start = Instant::now();
         inc_disconnect();
         error!("node connection closed, will attempt to reconnect");
         let stream = Self::connect_with_retries(
-            &config.ip_address,
-            config.port,
             &config.exponential_backoff,
             config.max_message_size_bytes,
+            socket_resolver,
         )
         .await?;
         info!("connection with the node has been re-established");
@@ -1238,8 +1276,9 @@ impl FramedNodeClient {
 
     async fn reconnect(
         config: &NodeClientConfig,
+        socket_resolver: Arc<dyn SocketResolver>,
     ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
-        Self::reconnect_internal(config).await
+        Self::reconnect_internal(config, socket_resolver).await
     }
 }
 
@@ -1265,15 +1304,13 @@ impl NodeClient for FramedNodeClient {
             );
             // attempt to reconnect in case the node was restarted and connection broke
             client.close().await.ok();
-            let ip_address = &self.config.ip_address;
 
             match tokio::time::timeout(
                 Duration::from_secs(self.config.client_access_timeout_secs),
                 Self::connect_with_retries(
-                    ip_address,
-                    self.config.port,
                     &self.config.exponential_backoff,
                     self.config.max_message_size_bytes,
+                    self.socket_resolver.clone(),
                 ),
             )
             .await
@@ -1440,10 +1477,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::testing::{
-        get_dummy_request, get_dummy_request_payload, get_port, start_mock_binary_port,
-        start_mock_binary_port_responding_with_given_response,
-        start_mock_binary_port_responding_with_stored_value,
+    use std::net::Ipv4Addr;
+
+    use crate::{
+        node_client::socket_resolver::test_socket_resolver,
+        testing::{
+            get_dummy_request, get_dummy_request_payload, get_port, start_mock_binary_port,
+            start_mock_binary_port_responding_with_given_response,
+            start_mock_binary_port_responding_with_stored_value,
+        },
     };
 
     use super::*;
@@ -1456,7 +1498,7 @@ mod tests {
     #[tokio::test]
     async fn given_client_and_no_node_should_fail_after_tries() {
         let config = NodeClientConfig::new_with_port_and_retries(1111, 2);
-        let res = FramedNodeClient::new(config, None).await;
+        let res = start_framed_node_client(config, None).await;
 
         assert!(res.is_err());
         let error_message = res.err().unwrap().to_string();
@@ -1478,7 +1520,7 @@ mod tests {
         )
         .await;
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
-        let (c, _, _) = FramedNodeClient::new(config, None).await.unwrap();
+        let (c, _, _) = start_framed_node_client(config, None).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &c)
             .await
@@ -1503,7 +1545,7 @@ mod tests {
             .await;
         });
         let config = NodeClientConfig::new_with_port_and_retries(port, 5);
-        let (client, _, _) = FramedNodeClient::new(config, None).await.unwrap();
+        let (client, _, _) = start_framed_node_client(config, None).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &client)
             .await
@@ -1551,7 +1593,7 @@ mod tests {
 
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
         let network_name = Some("not-network-1".into());
-        let res = FramedNodeClient::new(config, network_name).await;
+        let res = start_framed_node_client(config, network_name).await;
 
         assert!(res.is_err());
         let error_message = res.err().unwrap().to_string();
@@ -1592,8 +1634,12 @@ mod tests {
         )
         .await;
 
-        let config = NodeClientConfig::new_with_port(port);
-        let (c, reconnect_loop, _) = FramedNodeClient::new(config, None).await.unwrap();
+        let config = NodeClientConfig::new_with_port(port + 1); // making sure that the config has bogus port
+        let socket_resolver = test_socket_resolver(&Ipv4Addr::LOCALHOST.to_string(), port); // the resolver should have the correct port
+        let (c, reconnect_loop, _) =
+            start_framed_node_client_inner(config, None, socket_resolver.into())
+                .await
+                .unwrap();
 
         let scenario = async {
             // Request id = 1
@@ -1664,7 +1710,7 @@ mod tests {
         let shutdown = Arc::new(tokio::sync::Notify::new());
         let _mock_server_handle =
             start_mock_binary_port(port, Vec::new(), 1, Arc::clone(&shutdown)).await;
-        let (c, _, _) = FramedNodeClient::new(config, None).await.unwrap();
+        let (c, _, _) = start_framed_node_client(config, None).await.unwrap();
 
         let generated_ids: Vec<_> = (INITIAL_REQUEST_ID..INITIAL_REQUEST_ID + 10)
             .map(|_| {
@@ -1740,7 +1786,7 @@ mod tests {
         )
         .await;
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
-        let (c, _, _) = FramedNodeClient::new(config, None).await.unwrap();
+        let (c, _, _) = start_framed_node_client(config, None).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &c)
             .await
@@ -1764,7 +1810,7 @@ mod tests {
         )
         .await;
         let config = NodeClientConfig::new_with_port_and_retries(port, 2);
-        let (c, _, _) = FramedNodeClient::new(config, None).await.unwrap();
+        let (c, _, _) = start_framed_node_client(config, None).await.unwrap();
 
         let res = query_global_state_for_string_value(&mut rng, &c)
             .await

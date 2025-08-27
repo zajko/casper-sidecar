@@ -4,9 +4,9 @@ use casper_json_rpc::{DEFAULT_LIMIT_PERIOD, DEFAULT_LIMIT_REQUESTS};
 use casper_types::TimeDiff;
 use datasize::DataSize;
 use serde::Deserialize;
-#[cfg(any(feature = "testing", test))]
-use std::net::Ipv4Addr;
 use std::{collections::HashMap, net::IpAddr, num::NonZeroU32};
+#[cfg(any(feature = "testing", test))]
+use std::{net::Ipv4Addr, sync::LazyLock};
 use thiserror::Error;
 
 use crate::SpeculativeExecConfig;
@@ -120,7 +120,8 @@ impl RpcConfig {
 /// Default address to connect to the node.
 // Change this to SocketAddr, once SocketAddr::new is const stable.
 #[cfg(any(feature = "testing", test))]
-const DEFAULT_NODE_CONNECT_IP_ADDRESS: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
+static DEFAULT_NODE_CONNECT_IP_ADDRESS: LazyLock<String> =
+    LazyLock::new(|| Ipv4Addr::LOCALHOST.to_string());
 #[cfg(any(feature = "testing", test))]
 const DEFAULT_NODE_CONNECT_PORT: u16 = 28104;
 /// Default maximum payload size.
@@ -153,8 +154,9 @@ const DEFAULT_EXPONENTIAL_BACKOFF_MAX_ATTEMPTS: u32 = 3;
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct NodeClientConfig {
-    /// IP address of the node.
-    pub ip_address: IpAddr,
+    /// IP address or dns name of the node. To enable dns name resolving please set `enable_dns_resolution: true`
+    #[serde(alias = "host")]
+    pub ip_address: String,
     /// Port of the node.
     pub port: u16,
     /// Maximum size of a message in bytes.
@@ -168,13 +170,15 @@ pub struct NodeClientConfig {
     pub keepalive_timeout_ms: u64,
     /// Configuration for exponential backoff to be used for re-connects.
     pub exponential_backoff: ExponentialBackoffConfig,
+    /// Allow attempt to resolve address as dns. If not present defaults to false
+    pub enable_dns_resolution: Option<bool>,
 }
 
 impl NodeClientConfig {
     #[cfg(any(feature = "testing", test))]
     pub fn test_default() -> Self {
         NodeClientConfig {
-            ip_address: DEFAULT_NODE_CONNECT_IP_ADDRESS,
+            ip_address: DEFAULT_NODE_CONNECT_IP_ADDRESS.to_string(),
             port: DEFAULT_NODE_CONNECT_PORT,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
@@ -186,6 +190,7 @@ impl NodeClientConfig {
                 coefficient: DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT,
                 max_attempts: DEFAULT_EXPONENTIAL_BACKOFF_MAX_ATTEMPTS,
             },
+            enable_dns_resolution: None,
         }
     }
 
@@ -193,9 +198,8 @@ impl NodeClientConfig {
     #[cfg(any(feature = "testing", test))]
     #[must_use]
     pub fn new_with_port(port: u16) -> Self {
-        let localhost = IpAddr::V4(Ipv4Addr::LOCALHOST);
         NodeClientConfig {
-            ip_address: localhost,
+            ip_address: DEFAULT_NODE_CONNECT_IP_ADDRESS.to_string(),
             port,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
@@ -207,6 +211,7 @@ impl NodeClientConfig {
                 coefficient: DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT,
                 max_attempts: DEFAULT_EXPONENTIAL_BACKOFF_MAX_ATTEMPTS,
             },
+            enable_dns_resolution: None,
         }
     }
 
@@ -215,9 +220,8 @@ impl NodeClientConfig {
     #[cfg(any(feature = "testing", test))]
     #[must_use]
     pub fn new_with_port_and_retries(port: u16, num_of_retries: u32) -> Self {
-        let localhost = IpAddr::V4(Ipv4Addr::LOCALHOST);
         NodeClientConfig {
-            ip_address: localhost,
+            ip_address: DEFAULT_NODE_CONNECT_IP_ADDRESS.to_string(),
             port,
             max_message_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             message_timeout_secs: DEFAULT_MESSAGE_TIMEOUT_SECS,
@@ -229,6 +233,7 @@ impl NodeClientConfig {
                 coefficient: 3,
                 max_attempts: num_of_retries,
             },
+            enable_dns_resolution: None,
         }
     }
 }
