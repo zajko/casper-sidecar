@@ -1226,13 +1226,28 @@ impl FramedNodeClient {
     async fn connect_with_retries(
         backoff_config: &ExponentialBackoffConfig,
         max_message_size_bytes: u32,
-        socker_addr_resolver: Arc<dyn SocketResolver>,
+        socket_addr_resolver: Arc<dyn SocketResolver>,
     ) -> Result<Framed<TcpStream, BinaryMessageCodec>, AnyhowError> {
         let mut wait = backoff_config.initial_delay_ms;
         let max_attempts = &backoff_config.max_attempts;
         let mut current_attempt = 1;
         loop {
-            let tcp_socket = socker_addr_resolver.resolve_socket().await?;
+            let tcp_socket = match socket_addr_resolver.resolve_socket().await {
+                Ok(tcp_socket) => tcp_socket,
+                Err(err) => {
+                    current_attempt += 1;
+                    if *max_attempts < current_attempt {
+                        anyhow::bail!(
+                            "Couldn't resolve node socket {err} after {} attempts",
+                            current_attempt - 1
+                        );
+                    }
+                    warn!(%err, "failed to resolve nodes address, err: {err}, waiting {wait}ms before retrying");
+                    tokio::time::sleep(Duration::from_millis(wait)).await;
+                    wait = (wait * backoff_config.coefficient).min(backoff_config.max_delay_ms);
+                    continue;
+                }
+            };
             match TcpStream::connect(tcp_socket).await {
                 Ok(stream) => {
                     return Ok(Framed::new(
