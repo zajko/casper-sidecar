@@ -42,6 +42,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tokio-util = { version = "0.6", features = ["codec"] }
 tracing = { workspace = true, default-features = true }
 warp = { workspace = true, features = ["compression"] }
+hickory-resolver = "0"
 
 [dev-dependencies]
 casper-types = { workspace = true, features = [

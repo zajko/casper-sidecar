@@ -25,8 +25,7 @@ use derive_new::new;
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
-    net::IpAddr,
-    str::FromStr,
+    net::Ipv4Addr,
     time::Duration,
 };
 use tabled::{
@@ -286,12 +285,13 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     tokio::spawn(async move { unpack_test_config_and_run(testing_config, false).await });
 
     tokio::time::sleep(Duration::from_secs(1)).await;
-    let ip_address = IpAddr::from_str("127.0.0.1").expect("Couldn't parse IpAddr");
+    let ip_address = Ipv4Addr::LOCALHOST.to_string();
     let node_interface = NodeConnectionInterface {
         ip_address,
         sse_port: node_port_for_sse_connection,
         rest_port: node_port_for_rest_connection,
         network_name: None,
+        enable_dns_resolution: false,
     };
     let (node_event_tx, node_event_rx) = mpsc::channel(100);
     let mut node_event_listener = EventListenerBuilder {
@@ -317,10 +317,11 @@ async fn performance_check(scenario: Scenario, duration: Duration, acceptable_la
     let (sidecar_event_tx, sidecar_event_rx) = mpsc::channel(100);
 
     let sidecar_node_interface = NodeConnectionInterface {
-        ip_address: IpAddr::from_str("127.0.0.1").expect("Couldn't parse IpAddr"),
+        ip_address: Ipv4Addr::LOCALHOST.to_string(),
         sse_port: node_port_for_sse_connection,
         rest_port: node_port_for_rest_connection,
         network_name: None,
+        enable_dns_resolution: false,
     };
     let mut sidecar_event_listener = EventListenerBuilder {
         node: sidecar_node_interface,

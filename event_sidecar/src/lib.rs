@@ -269,10 +269,11 @@ fn builder(
     maybe_network_name: Option<String>,
 ) -> Result<EventListenerBuilder, Error> {
     let node_interface = NodeConnectionInterface {
-        ip_address: connection.ip_address,
+        ip_address: connection.ip_address.clone(),
         sse_port: connection.sse_port,
         rest_port: connection.rest_port,
         network_name: maybe_network_name,
+        enable_dns_resolution: connection.enable_dns_resolution.unwrap_or(false),
     };
     let event_listener_builder = EventListenerBuilder {
         node: node_interface,

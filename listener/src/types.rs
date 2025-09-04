@@ -1,27 +1,26 @@
 use casper_event_types::{Filter, sse_data::SseData};
 use reqwest::Url;
-use std::{
-    fmt::{Display, Formatter},
-    net::IpAddr,
-};
+use std::fmt::{Display, Formatter};
 
 /// Data on how to connect to a node
 #[derive(Clone)]
 pub struct NodeConnectionInterface {
-    pub ip_address: IpAddr,
+    pub ip_address: String,
     pub sse_port: u16,
     pub rest_port: u16,
     pub network_name: Option<String>,
+    pub enable_dns_resolution: bool,
 }
 
 #[cfg(test)]
 impl Default for NodeConnectionInterface {
     fn default() -> Self {
         Self {
-            ip_address: "127.0.0.1".parse().unwrap(),
+            ip_address: "127.0.0.1".to_owned(),
             sse_port: 100,
             rest_port: 200,
             network_name: None,
+            enable_dns_resolution: false,
         }
     }
 }
