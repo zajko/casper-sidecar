@@ -19,6 +19,12 @@ use super::{
     chain::{
         GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetEraSummary, GetStateRootHash,
     },
+    eth::{
+        BlockNumber as EthBlockNumber, Call as EthCall, ChainId as EthChainId,
+        GetBlockByNumber as EthGetBlockByNumber, GetTransactionCount as EthGetTransactionCount,
+        GetTransactionReceipt as EthGetTransactionReceipt,
+        SendRawTransaction as EthSendRawTransaction,
+    },
     info::{
         GetChainspec, GetDeploy, GetPeers, GetReward, GetStatus, GetTransaction,
         GetValidatorChanges,
@@ -53,7 +59,9 @@ static SERVER: LazyLock<OpenRpcServerEntry> = LazyLock::new(|| {
 });
 
 // As per https://spec.open-rpc.org/#service-discovery-method.
-pub(crate) static OPEN_RPC_SCHEMA: LazyLock<OpenRpcSchema> = LazyLock::new(|| {
+pub(crate) static OPEN_RPC_SCHEMA: LazyLock<OpenRpcSchema> = LazyLock::new(build_open_rpc_schema);
+
+fn build_open_rpc_schema() -> OpenRpcSchema {
     let info = OpenRpcInfoField {
         version: DOCS_EXAMPLE_API_VERSION.to_string(),
         title: "Client API of Casper Node".to_string(),
@@ -99,6 +107,17 @@ pub(crate) static OPEN_RPC_SCHEMA: LazyLock<OpenRpcSchema> = LazyLock::new(|| {
         "returns the raw bytes of the chainspec.toml, genesis accounts.toml, and \
         global_state.toml files",
     );
+    schema.push_without_params::<EthChainId>("returns the configured EVM chain ID");
+    schema.push_without_params::<EthBlockNumber>("returns the latest block height");
+    schema.push_with_params::<EthGetBlockByNumber>("returns an Ethereum-compatible block");
+    schema.push_with_params::<EthGetTransactionCount>("returns an EVM account nonce");
+    schema.push_with_params::<EthSendRawTransaction>(
+        "submits a signed Ethereum transaction as a Casper EVM transaction",
+    );
+    schema.push_with_params::<EthGetTransactionReceipt>(
+        "returns an Ethereum-compatible receipt for an executed EVM transaction",
+    );
+    schema.push_with_params::<EthCall>("executes a read-only EVM call");
     schema.push_with_optional_params::<GetBlock>("returns a Block from the network");
     schema.push_with_optional_params::<GetBlockTransfers>(
         "returns all transfers for a Block from the network",
@@ -129,7 +148,7 @@ pub(crate) static OPEN_RPC_SCHEMA: LazyLock<OpenRpcSchema> = LazyLock::new(|| {
     );
 
     schema
-});
+}
 static LIST_RPCS_RESULT: LazyLock<RpcDiscoverResult> = LazyLock::new(|| RpcDiscoverResult {
     api_version: DOCS_EXAMPLE_API_VERSION,
     name: "OpenRPC Schema".to_string(),
@@ -614,5 +633,19 @@ mod tests {
     fn check_state_get_auction_info_v2_required_fields() {
         let incorrect_optional_params = check_optional_params_fields::<GetAuctionInfoV2>();
         assert!(incorrect_optional_params.is_empty());
+    }
+
+    #[test]
+    fn rpc_discover_schema_generation_does_not_panic() {
+        let schema = std::panic::catch_unwind(build_open_rpc_schema)
+            .expect("OpenRPC schema generation should not panic");
+
+        assert!(
+            schema
+                .methods
+                .iter()
+                .any(|method| method.name == "eth_getTransactionReceipt")
+        );
+        serde_json::to_string(&schema).expect("OpenRPC schema should serialize");
     }
 }

@@ -8,6 +8,7 @@ mod common;
 pub mod docs;
 mod error;
 mod error_code;
+pub mod eth;
 pub mod info;
 pub mod speculative_exec;
 pub mod speculative_open_rpc_schema;

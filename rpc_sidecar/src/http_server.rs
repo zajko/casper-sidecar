@@ -9,6 +9,12 @@ use super::rpcs::{
         GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetEraSummary, GetStateRootHash,
     },
     docs::RpcDiscover,
+    eth::{
+        BlockNumber as EthBlockNumber, Call as EthCall, ChainId as EthChainId,
+        GetBlockByNumber as EthGetBlockByNumber, GetTransactionCount as EthGetTransactionCount,
+        GetTransactionReceipt as EthGetTransactionReceipt,
+        SendRawTransaction as EthSendRawTransaction,
+    },
     info::{GetChainspec, GetDeploy, GetValidatorChanges},
     state::{
         GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem, GetTrie,
@@ -76,6 +82,13 @@ pub async fn run(
     register!(GetChainspec);
     register!(QueryBalance);
     register!(QueryBalanceDetails);
+    register!(EthChainId);
+    register!(EthBlockNumber);
+    register!(EthGetBlockByNumber);
+    register!(EthGetTransactionCount);
+    register!(EthSendRawTransaction);
+    register!(EthGetTransactionReceipt);
+    register!(EthCall);
 
     let handlers = handlers.build();
 

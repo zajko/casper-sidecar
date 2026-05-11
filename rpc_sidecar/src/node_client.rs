@@ -5,11 +5,12 @@ use casper_binary_port::{
     AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
     BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command, CommandHeader,
     ConsensusValidatorChanges, ContractInformation, DictionaryItemIdentifier,
-    DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, GetRequest,
-    GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
-    InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier,
-    PayloadEntity, PurseIdentifier, RecordId, ResponseType, RewardResponse,
-    SpeculativeExecutionResult, TransactionWithExecutionInfo, ValueWithProof,
+    DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, EvmCallRequest,
+    EvmCallResult, GetRequest, GetTrieFullResult, GlobalStateEntityQualifier,
+    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
+    KeyPrefix, NodeStatus, PackageIdentifier, PayloadEntity, PurseIdentifier, RecordId,
+    ResponseType, RewardResponse, SimulationRequest, SimulationResult, SpeculativeExecutionResult,
+    TransactionWithExecutionInfo, ValueWithProof,
 };
 use casper_types::{
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockWithSignatures,
@@ -170,6 +171,18 @@ pub trait NodeClient: Send + Sync {
         let request = Command::TrySpeculativeExec { transaction };
         let resp = self.send_request(request).await?;
         parse_response::<SpeculativeExecutionResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
+
+    async fn evm_call(&self, request: EvmCallRequest) -> Result<EvmCallResult, Error> {
+        let resp = self
+            .send_request(Command::Simulate {
+                request: SimulationRequest::EvmCall(request),
+            })
+            .await?;
+        match parse_response::<SimulationResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)? {
+            SimulationResult::EvmCall(result) => Ok(result),
+            SimulationResult::Transaction(_) => Err(Error::UnexpectedSimulationResult),
+        }
     }
 
     async fn read_block_transfers(&self, hash: BlockHash) -> Result<Option<Vec<Transfer>>, Error> {
@@ -511,6 +524,9 @@ pub enum InvalidTransactionOrDeploy {
     /// Missing transfer target for deploy
     #[error("missing transfer target for deploy")]
     DeployMissingTransferTarget,
+    /// EVM address transfer target is disabled for deploy
+    #[error("EVM address transfer target is disabled for deploy")]
+    DeployEvmAddressTransferDisabled,
     /// Missing module bytes for deploy
     #[error("missing module bytes for deploy")]
     DeployMissingModuleBytes,
@@ -664,6 +680,7 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             ErrorCode::DeployMissingPaymentAmount => Self::DeployMissingPaymentAmount,
             ErrorCode::DeployFailedToParsePaymentAmount => Self::DeployFailedToParsePaymentAmount,
             ErrorCode::DeployMissingTransferTarget => Self::DeployMissingTransferTarget,
+            ErrorCode::DeployEvmAddressTransferDisabled => Self::DeployEvmAddressTransferDisabled,
             ErrorCode::DeployMissingModuleBytes => Self::DeployMissingModuleBytes,
             ErrorCode::InvalidTransactionEntryPointCannotBeCall => {
                 Self::InvalidTransactionEntryPointCannotBeCall
@@ -742,6 +759,8 @@ pub enum Error {
     EmptyEnvelope,
     #[error("unexpected payload variant received in the response: {0}")]
     UnexpectedVariantReceived(u8),
+    #[error("unexpected simulation result received for EVM call")]
+    UnexpectedSimulationResult,
     #[error("attempted to use a function that's disabled on the node")]
     FunctionIsDisabled,
     #[error("could not find the provided state root hash")]
@@ -877,6 +896,7 @@ impl Error {
                 | ErrorCode::DeployMissingPaymentAmount
                 | ErrorCode::DeployFailedToParsePaymentAmount
                 | ErrorCode::DeployMissingTransferTarget
+                | ErrorCode::DeployEvmAddressTransferDisabled
                 | ErrorCode::DeployMissingModuleBytes
                 | ErrorCode::InvalidTransactionEntryPointCannotBeCall
                 | ErrorCode::InvalidTransactionInvalidTransactionLane

@@ -140,7 +140,7 @@ fn maybe_translate_deploy_expired(transaction_hash: &TransactionHash) -> Option<
         TransactionHash::Deploy(deploy_hash) => Some(LegacySseData::DeployExpired {
             deploy_hash: *deploy_hash,
         }),
-        TransactionHash::V1(_) => None,
+        TransactionHash::V1(_) | TransactionHash::Evm(_) => None,
     }
 }
 
@@ -157,6 +157,7 @@ fn maybe_translate_transaction_processed(
             let account = match initiator_addr {
                 InitiatorAddr::PublicKey(public_key) => public_key,
                 InitiatorAddr::AccountHash(_) => return None, //This shouldn't happen since we already are in TransactionHash::Deploy
+                InitiatorAddr::EvmAddress(_) => return None,
             };
             let execution_result = match execution_result {
                 ExecutionResult::V1(result) => result.clone(),
@@ -165,6 +166,7 @@ fn maybe_translate_transaction_processed(
                         build_default_execution_result_translator().translate(result);
                     maybe_result?
                 }
+                ExecutionResult::Evm(_) => return None,
             };
             Some(LegacySseData::DeployProcessed {
                 deploy_hash: Box::new(*deploy_hash),
@@ -176,14 +178,14 @@ fn maybe_translate_transaction_processed(
                 execution_result: Box::new(execution_result),
             })
         }
-        TransactionHash::V1(_) => None, //V1 transactions can't be interpreted in the old format.
+        TransactionHash::V1(_) | TransactionHash::Evm(_) => None, //V1 and EVM transactions can't be interpreted in the old format.
     }
 }
 
 fn maybe_translate_transaction_accepted(transaction: &Transaction) -> Option<LegacySseData> {
     match transaction {
         Transaction::Deploy(deploy) => Some(LegacySseData::DeployAccepted(deploy.clone())),
-        Transaction::V1(_) => None, //V2 transactions can't be interpreted in the old format.
+        Transaction::V1(_) | Transaction::Evm(_) => None, //V2 and EVM transactions can't be interpreted in the old format.
     }
 }
 

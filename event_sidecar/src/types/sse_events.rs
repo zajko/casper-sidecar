@@ -103,6 +103,7 @@ impl TransactionAccepted {
         match *self.transaction {
             Transaction::Deploy(_) => TransactionTypeId::Deploy,
             Transaction::V1(_) => TransactionTypeId::Version1,
+            Transaction::Evm(_) => TransactionTypeId::Evm,
         }
     }
 
@@ -115,6 +116,7 @@ impl TransactionAccepted {
         match *self.transaction {
             Transaction::Deploy(_) => crate::types::database::TransactionTypeId::Deploy,
             Transaction::V1(_) => crate::types::database::TransactionTypeId::Version1,
+            Transaction::Evm(_) => crate::types::database::TransactionTypeId::Evm,
         }
     }
 
@@ -131,11 +133,7 @@ impl TransactionAccepted {
     }
 
     pub fn hex_encoded_hash(&self) -> String {
-        let hex_fmt: String = match self.transaction.hash() {
-            TransactionHash::Deploy(deploy) => deploy.encode_hex(),
-            TransactionHash::V1(transaction) => transaction.encode_hex(),
-        };
-        hex_fmt
+        transaction_hash_to_identifier(&self.transaction.hash())
     }
 }
 
@@ -167,6 +165,7 @@ impl TransactionProcessed {
         match *self.transaction_hash.as_ref() {
             TransactionHash::Deploy(_) => TransactionTypeId::Deploy,
             TransactionHash::V1(_) => TransactionTypeId::Version1,
+            TransactionHash::Evm(_) => TransactionTypeId::Evm,
         }
     }
 
@@ -175,6 +174,7 @@ impl TransactionProcessed {
         match *self.transaction_hash.as_ref() {
             TransactionHash::Deploy(_) => crate::types::database::TransactionTypeId::Deploy,
             TransactionHash::V1(_) => crate::types::database::TransactionTypeId::Version1,
+            TransactionHash::Evm(_) => crate::types::database::TransactionTypeId::Evm,
         }
     }
 
@@ -184,10 +184,12 @@ impl TransactionProcessed {
         let ttl = match &transaction {
             Transaction::Deploy(deploy) => deploy.ttl(),
             Transaction::V1(transaction) => transaction.ttl(),
+            Transaction::Evm(transaction) => transaction.ttl(),
         };
         let timestamp = match &transaction {
             Transaction::Deploy(deploy) => deploy.timestamp(),
             Transaction::V1(transaction) => transaction.timestamp(),
+            Transaction::Evm(transaction) => transaction.timestamp(),
         };
         let initiator_addr = Box::new(transaction.initiator_addr());
         Self {
@@ -205,6 +207,7 @@ impl TransactionProcessed {
         match *self.transaction_hash.as_ref() {
             TransactionHash::Deploy(deploy_hash) => deploy_hash.encode_hex(),
             TransactionHash::V1(v1_hash) => v1_hash.encode_hex(),
+            TransactionHash::Evm(evm_hash) => evm_hash.encode_hex(),
         }
     }
 
@@ -229,6 +232,7 @@ impl TransactionExpired {
         match self.transaction_hash {
             TransactionHash::Deploy(_) => TransactionTypeId::Deploy,
             TransactionHash::V1(_) => TransactionTypeId::Version1,
+            TransactionHash::Evm(_) => TransactionTypeId::Evm,
         }
     }
     pub fn transaction_hash(&self) -> TransactionHash {
@@ -240,6 +244,7 @@ impl TransactionExpired {
         match self.transaction_hash {
             TransactionHash::Deploy(_) => crate::types::database::TransactionTypeId::Deploy,
             TransactionHash::V1(_) => crate::types::database::TransactionTypeId::Version1,
+            TransactionHash::Evm(_) => crate::types::database::TransactionTypeId::Evm,
         }
     }
 
@@ -254,6 +259,7 @@ impl TransactionExpired {
         match self.transaction_hash {
             TransactionHash::Deploy(deploy_hash) => deploy_hash.encode_hex(),
             TransactionHash::V1(v1_hash) => v1_hash.encode_hex(),
+            TransactionHash::Evm(evm_hash) => evm_hash.encode_hex(),
         }
     }
 }
@@ -365,5 +371,6 @@ pub fn transaction_hash_to_identifier(transaction_hash: &TransactionHash) -> Str
     match transaction_hash {
         TransactionHash::Deploy(deploy) => hex::encode(deploy.inner()),
         TransactionHash::V1(transaction) => hex::encode(transaction.inner()),
+        TransactionHash::Evm(transaction) => transaction.encode_hex(),
     }
 }

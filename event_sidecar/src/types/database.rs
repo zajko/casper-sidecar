@@ -28,6 +28,7 @@ use crate::{
 pub enum TransactionTypeId {
     Deploy,
     Version1,
+    Evm,
 }
 
 impl From<&TransactionTypeId> for u8 {
@@ -35,6 +36,7 @@ impl From<&TransactionTypeId> for u8 {
         let sql_transaction_type = match transaction_type {
             TransactionTypeId::Deploy => SqlTransactionTypeId::Deploy,
             TransactionTypeId::Version1 => SqlTransactionTypeId::Version1,
+            TransactionTypeId::Evm => SqlTransactionTypeId::Evm,
         };
         sql_transaction_type as u8
     }
@@ -46,6 +48,7 @@ impl Display for TransactionTypeId {
         match self {
             TransactionTypeId::Deploy => write!(f, "deploy"),
             TransactionTypeId::Version1 => write!(f, "version1"),
+            TransactionTypeId::Evm => write!(f, "evm"),
         }
     }
 }

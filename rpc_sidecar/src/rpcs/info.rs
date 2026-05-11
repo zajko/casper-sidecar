@@ -178,7 +178,9 @@ impl RpcWithParams for GetDeploy {
 
         let deploy = match transaction {
             Transaction::Deploy(deploy) => deploy,
-            Transaction::V1(_) => return Err(Error::FoundTransactionInsteadOfDeploy.into()),
+            Transaction::V1(_) | Transaction::Evm(_) => {
+                return Err(Error::FoundTransactionInsteadOfDeploy.into());
+            }
         };
 
         Ok(Self::ResponseResult {

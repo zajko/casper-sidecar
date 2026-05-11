@@ -1822,6 +1822,278 @@
       ]
     },
     {
+      "name": "eth_chainId",
+      "summary": "returns the configured EVM chain ID",
+      "params": [],
+      "result": {
+        "name": "eth_chainId_result",
+        "schema": {
+          "description": "Ethereum JSON-RPC quantity encoded as canonical 0x-prefixed hexadecimal.",
+          "type": "string"
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_chainId_example",
+          "params": [],
+          "result": {
+            "name": "eth_chainId_example_result",
+            "value": "0x0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_blockNumber",
+      "summary": "returns the latest block height",
+      "params": [],
+      "result": {
+        "name": "eth_blockNumber_result",
+        "schema": {
+          "description": "Ethereum JSON-RPC quantity encoded as canonical 0x-prefixed hexadecimal.",
+          "type": "string"
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_blockNumber_example",
+          "params": [],
+          "result": {
+            "name": "eth_blockNumber_example_result",
+            "value": "0x0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_getBlockByNumber",
+      "summary": "returns an Ethereum-compatible block",
+      "params": [
+        {
+          "name": "block",
+          "schema": {
+            "$ref": "#/components/schemas/BlockNumberParam"
+          },
+          "required": true
+        },
+        {
+          "name": "full_transactions",
+          "schema": {
+            "type": "boolean"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getBlockByNumber_result",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/BlockResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getBlockByNumber_example",
+          "params": [
+            {
+              "name": "block",
+              "value": "latest"
+            },
+            {
+              "name": "full_transactions",
+              "value": false
+            }
+          ],
+          "result": {
+            "name": "eth_getBlockByNumber_example_result",
+            "value": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_getTransactionCount",
+      "summary": "returns an EVM account nonce",
+      "params": [
+        {
+          "name": "address",
+          "schema": {
+            "$ref": "#/components/schemas/EthAddress"
+          },
+          "required": true
+        },
+        {
+          "name": "block",
+          "schema": {
+            "default": "latest",
+            "$ref": "#/components/schemas/BlockTag"
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "eth_getTransactionCount_result",
+        "schema": {
+          "description": "Ethereum JSON-RPC quantity encoded as canonical 0x-prefixed hexadecimal.",
+          "type": "string"
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getTransactionCount_example",
+          "params": [
+            {
+              "name": "address",
+              "value": "0x0000000000000000000000000000000000000000"
+            },
+            {
+              "name": "block",
+              "value": "latest"
+            }
+          ],
+          "result": {
+            "name": "eth_getTransactionCount_example_result",
+            "value": "0x0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_sendRawTransaction",
+      "summary": "submits a signed Ethereum transaction as a Casper EVM transaction",
+      "params": [
+        {
+          "name": "raw_transaction",
+          "schema": {
+            "$ref": "#/components/schemas/EthHexData"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_sendRawTransaction_result",
+        "schema": {
+          "description": "A 32-byte EVM hash or storage word encoded as 0x-prefixed hexadecimal.",
+          "type": "string"
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_sendRawTransaction_example",
+          "params": [
+            {
+              "name": "raw_transaction",
+              "value": "0x"
+            }
+          ],
+          "result": {
+            "name": "eth_sendRawTransaction_example_result",
+            "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_getTransactionReceipt",
+      "summary": "returns an Ethereum-compatible receipt for an executed EVM transaction",
+      "params": [
+        {
+          "name": "transaction_hash",
+          "schema": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getTransactionReceipt_result",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/TransactionReceiptResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getTransactionReceipt_example",
+          "params": [
+            {
+              "name": "transaction_hash",
+              "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            }
+          ],
+          "result": {
+            "name": "eth_getTransactionReceipt_example_result",
+            "value": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_call",
+      "summary": "executes a read-only EVM call",
+      "params": [
+        {
+          "name": "call",
+          "schema": {
+            "$ref": "#/components/schemas/CallObject"
+          },
+          "required": true
+        },
+        {
+          "name": "block",
+          "schema": {
+            "default": "latest",
+            "$ref": "#/components/schemas/BlockTag"
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "eth_call_result",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_call_example",
+          "params": [
+            {
+              "name": "call",
+              "value": {
+                "from": "0x0000000000000000000000000000000000000000",
+                "to": null,
+                "data": "0x",
+                "input": null,
+                "value": null,
+                "gas": null
+              }
+            },
+            {
+              "name": "block",
+              "value": "latest"
+            }
+          ],
+          "result": {
+            "name": "eth_call_example_result",
+            "value": "0x"
+          }
+        }
+      ]
+    },
+    {
       "name": "chain_get_block",
       "summary": "returns a Block from the network",
       "params": [
@@ -3358,6 +3630,19 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "description": "An EVM transaction.",
+            "type": "object",
+            "required": [
+              "Evm"
+            ],
+            "properties": {
+              "Evm": {
+                "$ref": "#/components/schemas/Transaction2"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -3428,7 +3713,7 @@
         "additionalProperties": false
       },
       "InitiatorAddr": {
-        "description": "The address of the initiator of a TransactionV1.",
+        "description": "The address of the initiator of a transaction.",
         "oneOf": [
           {
             "description": "The public key of the initiator.",
@@ -3455,11 +3740,28 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "description": "The EVM-native address recovered from the signed Ethereum transaction.",
+            "type": "object",
+            "required": [
+              "EvmAddress"
+            ],
+            "properties": {
+              "EvmAddress": {
+                "$ref": "#/components/schemas/Address"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
       "AccountHash": {
         "description": "Account hash as a formatted string.",
+        "type": "string"
+      },
+      "Address": {
+        "description": "A 20-byte Ethereum account or contract address encoded as hexadecimal.",
         "type": "string"
       },
       "PricingMode": {
@@ -3563,6 +3865,145 @@
           }
         ]
       },
+      "Transaction2": {
+        "description": "An unsigned Ethereum transaction payload plus one Ethereum-style Casper approval.",
+        "type": "object",
+        "required": [
+          "approvals",
+          "from",
+          "gas_limit",
+          "hash",
+          "input",
+          "kind",
+          "max_fee_per_gas",
+          "nonce",
+          "timestamp",
+          "ttl",
+          "value"
+        ],
+        "properties": {
+          "timestamp": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "ttl": {
+            "$ref": "#/components/schemas/TimeDiff"
+          },
+          "hash": {
+            "$ref": "#/components/schemas/EvmTransactionHash"
+          },
+          "from": {
+            "$ref": "#/components/schemas/Address"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TransactionKind"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Address"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nonce": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "gas_limit": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "gas_price": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint128",
+            "minimum": 0.0
+          },
+          "max_fee_per_gas": {
+            "type": "integer",
+            "format": "uint128",
+            "minimum": 0.0
+          },
+          "max_priority_fee_per_gas": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint128",
+            "minimum": 0.0
+          },
+          "value": {
+            "$ref": "#/components/schemas/U256"
+          },
+          "input": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "uint8",
+              "minimum": 0.0
+            }
+          },
+          "chain_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "approvals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Approval"
+            },
+            "uniqueItems": true
+          }
+        }
+      },
+      "EvmTransactionHash": {
+        "description": "A transaction hash produced by Ethereum transaction RLP hashing rules.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Digest"
+          }
+        ]
+      },
+      "TransactionKind": {
+        "description": "The supported Ethereum transaction envelope kinds.",
+        "oneOf": [
+          {
+            "description": "A legacy Ethereum transaction.",
+            "type": "string",
+            "enum": [
+              "Legacy"
+            ]
+          },
+          {
+            "description": "An EIP-2930 access-list transaction.",
+            "type": "string",
+            "enum": [
+              "Eip2930"
+            ]
+          },
+          {
+            "description": "An EIP-1559 dynamic-fee transaction.",
+            "type": "string",
+            "enum": [
+              "Eip1559"
+            ]
+          }
+        ]
+      },
+      "U256": {
+        "description": "Decimal representation of a 256-bit integer.",
+        "type": "string"
+      },
       "TransactionHash": {
         "description": "A versioned wrapper for a transaction hash or deploy hash.",
         "oneOf": [
@@ -3588,6 +4029,19 @@
             "properties": {
               "Version1": {
                 "$ref": "#/components/schemas/TransactionV1Hash"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "An EVM transaction hash.",
+            "type": "object",
+            "required": [
+              "Evm"
+            ],
+            "properties": {
+              "Evm": {
+                "$ref": "#/components/schemas/EvmTransactionHash"
               }
             },
             "additionalProperties": false
@@ -3663,6 +4117,19 @@
             "properties": {
               "Version2": {
                 "$ref": "#/components/schemas/ExecutionResultV2"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "EVM transaction execution result type.",
+            "type": "object",
+            "required": [
+              "Evm"
+            ],
+            "properties": {
+              "Evm": {
+                "$ref": "#/components/schemas/EvmExecutionResult"
               }
             },
             "additionalProperties": false
@@ -4699,10 +5166,6 @@
       },
       "U128": {
         "description": "Decimal representation of a 128-bit integer.",
-        "type": "string"
-      },
-      "U256": {
-        "description": "Decimal representation of a 256-bit integer.",
         "type": "string"
       },
       "NamedKey": {
@@ -5887,6 +6350,45 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "description": "EVM account metadata.",
+            "type": "object",
+            "required": [
+              "EvmAccount"
+            ],
+            "properties": {
+              "EvmAccount": {
+                "$ref": "#/components/schemas/Account2"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "EVM contract bytecode, addressed by [`crate::Key::EvmByteCode`].",
+            "type": "object",
+            "required": [
+              "EvmByteCode"
+            ],
+            "properties": {
+              "EvmByteCode": {
+                "$ref": "#/components/schemas/ByteCode2"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "EVM storage value for a single contract slot.",
+            "type": "object",
+            "required": [
+              "EvmStorage"
+            ],
+            "properties": {
+              "EvmStorage": {
+                "$ref": "#/components/schemas/StorageValue"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -6819,6 +7321,50 @@
           }
         ]
       },
+      "Account2": {
+        "description": "EVM account metadata stored in global state.",
+        "type": "object",
+        "required": [
+          "code_hash",
+          "main_purse",
+          "nonce"
+        ],
+        "properties": {
+          "nonce": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "code_hash": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "main_purse": {
+            "$ref": "#/components/schemas/URef"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EvmHash": {
+        "description": "A 32-byte EVM hash or storage word encoded as 0x-prefixed hexadecimal.",
+        "type": "string"
+      },
+      "ByteCode2": {
+        "description": "EVM contract bytecode stored in global state.",
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        }
+      },
+      "StorageValue": {
+        "description": "EVM storage value stored in global state.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EvmHash"
+          }
+        ]
+      },
       "TransformError": {
         "description": "Error type for applying and combining transforms.\n\nA `TypeMismatch` occurs when a transform cannot be applied because the types are not compatible (e.g. trying to add a number to a string).",
         "oneOf": [
@@ -6921,6 +7467,399 @@
             "type": "string"
           }
         }
+      },
+      "EvmExecutionResult": {
+        "description": "The result of executing a single EVM transaction.",
+        "type": "object",
+        "required": [
+          "cost",
+          "current_price",
+          "effects",
+          "initiator",
+          "limit",
+          "receipt",
+          "refund",
+          "size_estimate"
+        ],
+        "properties": {
+          "initiator": {
+            "description": "Who initiated this EVM transaction.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InitiatorAddr"
+              }
+            ]
+          },
+          "current_price": {
+            "description": "The current Casper gas price used for fee accounting.",
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          },
+          "limit": {
+            "description": "The maximum allowed gas limit for this transaction.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Gas"
+              }
+            ]
+          },
+          "cost": {
+            "description": "How much was paid for this transaction.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/U512"
+              }
+            ]
+          },
+          "refund": {
+            "description": "How much unconsumed gas was refunded, if any.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/U512"
+              }
+            ]
+          },
+          "size_estimate": {
+            "description": "The size estimate of the transaction.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "effects": {
+            "description": "The effects of executing this transaction.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Effects"
+              }
+            ]
+          },
+          "receipt": {
+            "description": "EVM-native receipt data used by Ethereum JSON-RPC projections.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Receipt"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Receipt": {
+        "description": "EVM transaction receipt data persisted with an EVM execution result.",
+        "type": "object",
+        "required": [
+          "effective_gas_price",
+          "gas_used",
+          "logs",
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "description": "Transaction execution status.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReceiptStatus"
+              }
+            ]
+          },
+          "gas_used": {
+            "description": "Gas consumed by EVM execution.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "effective_gas_price": {
+            "description": "Effective gas price used for Ethereum receipt projection and Casper EVM fee accounting.\n\nFor accepted EIP-1559 transactions this is the configured EVM base fee capped by `max_fee_per_gas`, since non-zero priority fees are rejected while Casper does not prioritize transactions based on transaction gas parameters.",
+            "type": "integer",
+            "format": "uint128",
+            "minimum": 0.0
+          },
+          "contract_address": {
+            "description": "Contract address created by the transaction, if any.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Address"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "logs": {
+            "description": "Logs emitted by successful execution.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Log"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReceiptStatus": {
+        "description": "High-level status recorded in an EVM transaction receipt.",
+        "oneOf": [
+          {
+            "description": "EVM execution completed successfully.",
+            "type": "string",
+            "enum": [
+              "Success"
+            ]
+          },
+          {
+            "description": "EVM execution reverted and returned revert bytes.",
+            "type": "string",
+            "enum": [
+              "Revert"
+            ]
+          },
+          {
+            "description": "EVM execution halted for an exceptional reason.",
+            "type": "object",
+            "required": [
+              "Halt"
+            ],
+            "properties": {
+              "Halt": {
+                "$ref": "#/components/schemas/HaltReason"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "HaltReason": {
+        "description": "Reason an EVM execution halted exceptionally.",
+        "oneOf": [
+          {
+            "description": "Execution ran out of gas.",
+            "type": "object",
+            "required": [
+              "OutOfGas"
+            ],
+            "properties": {
+              "OutOfGas": {
+                "$ref": "#/components/schemas/OutOfGasError"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "The bytecode contained an unknown opcode.",
+            "type": "string",
+            "enum": [
+              "OpcodeNotFound"
+            ]
+          },
+          {
+            "description": "The bytecode executed the invalid `0xFE` opcode.",
+            "type": "string",
+            "enum": [
+              "InvalidFEOpcode"
+            ]
+          },
+          {
+            "description": "Execution jumped to an invalid destination.",
+            "type": "string",
+            "enum": [
+              "InvalidJump"
+            ]
+          },
+          {
+            "description": "The opcode or feature is not active for the configured hardfork.",
+            "type": "string",
+            "enum": [
+              "NotActivated"
+            ]
+          },
+          {
+            "description": "Execution attempted to pop a value from an empty stack.",
+            "type": "string",
+            "enum": [
+              "StackUnderflow"
+            ]
+          },
+          {
+            "description": "Execution attempted to push a value onto a full stack.",
+            "type": "string",
+            "enum": [
+              "StackOverflow"
+            ]
+          },
+          {
+            "description": "Execution used an invalid memory or storage offset.",
+            "type": "string",
+            "enum": [
+              "OutOfOffset"
+            ]
+          },
+          {
+            "description": "Contract creation collided with an existing account.",
+            "type": "string",
+            "enum": [
+              "CreateCollision"
+            ]
+          },
+          {
+            "description": "A precompile failed.",
+            "type": "string",
+            "enum": [
+              "PrecompileError"
+            ]
+          },
+          {
+            "description": "Account nonce overflowed.",
+            "type": "string",
+            "enum": [
+              "NonceOverflow"
+            ]
+          },
+          {
+            "description": "Created contract runtime bytecode exceeded the configured limit.",
+            "type": "string",
+            "enum": [
+              "CreateContractSizeLimit"
+            ]
+          },
+          {
+            "description": "Created contract runtime bytecode starts with `0xEF`.",
+            "type": "string",
+            "enum": [
+              "CreateContractStartingWithEF"
+            ]
+          },
+          {
+            "description": "Contract init code exceeded the configured limit.",
+            "type": "string",
+            "enum": [
+              "CreateInitCodeSizeLimit"
+            ]
+          },
+          {
+            "description": "Payment accounting overflowed.",
+            "type": "string",
+            "enum": [
+              "OverflowPayment"
+            ]
+          },
+          {
+            "description": "Execution attempted a state change during a static call.",
+            "type": "string",
+            "enum": [
+              "StateChangeDuringStaticCall"
+            ]
+          },
+          {
+            "description": "Execution attempted a call disallowed during a static call.",
+            "type": "string",
+            "enum": [
+              "CallNotAllowedInsideStatic"
+            ]
+          },
+          {
+            "description": "The caller did not have enough funds.",
+            "type": "string",
+            "enum": [
+              "OutOfFunds"
+            ]
+          },
+          {
+            "description": "Call depth exceeded the EVM limit.",
+            "type": "string",
+            "enum": [
+              "CallTooDeep"
+            ]
+          },
+          {
+            "description": "Halt reason was not recognized by this version.",
+            "type": "string",
+            "enum": [
+              "Unknown"
+            ]
+          }
+        ]
+      },
+      "OutOfGasError": {
+        "description": "Reason execution ran out of gas.",
+        "oneOf": [
+          {
+            "description": "Not enough gas to execute an opcode.",
+            "type": "string",
+            "enum": [
+              "Basic"
+            ]
+          },
+          {
+            "description": "Memory limit exceeded.",
+            "type": "string",
+            "enum": [
+              "MemoryLimit"
+            ]
+          },
+          {
+            "description": "Memory expansion ran out of gas.",
+            "type": "string",
+            "enum": [
+              "Memory"
+            ]
+          },
+          {
+            "description": "Precompile ran out of gas.",
+            "type": "string",
+            "enum": [
+              "Precompile"
+            ]
+          },
+          {
+            "description": "Operand was too large to fit into the required native type.",
+            "type": "string",
+            "enum": [
+              "InvalidOperand"
+            ]
+          },
+          {
+            "description": "`SSTORE` was attempted with too little gas remaining.",
+            "type": "string",
+            "enum": [
+              "ReentrancySentry"
+            ]
+          }
+        ]
+      },
+      "Log": {
+        "description": "EVM log entry emitted by a transaction.",
+        "type": "object",
+        "required": [
+          "address",
+          "data",
+          "topics"
+        ],
+        "properties": {
+          "address": {
+            "description": "Contract address that emitted the log.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Address"
+              }
+            ]
+          },
+          "topics": {
+            "description": "Indexed log topics.\n\nThe EVM supports at most four topics per log because bytecode emits logs with the `LOG0` through `LOG4` opcodes. For a non-anonymous Solidity event, `topics[0]` is the full 32-byte Keccak-256 hash of the canonical event signature such as `Transfer(address,address,uint256)`. Indexed event arguments are ABI-encoded into the following topics. Anonymous Solidity events omit the signature topic, allowing all four topics to hold indexed arguments.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvmHash"
+            }
+          },
+          "data": {
+            "description": "ABI-encoded unindexed log data.\n\nThis contains the event arguments that are not marked `indexed`, including ABI offsets and lengths for dynamic values. The type does not impose a fixed per-log byte limit; effective size is bounded by transaction gas, block gas, EVM memory expansion, and the EVM log-data gas cost. With the current Casper EVM `block_gas_limit` of 30,000,000 and revm's Ethereum gas schedule, the artificial best-case bound is:\n\n```text log_gas = 375 + 375 * topics + 8 * bytes + memory_gas(bytes) memory_gas(bytes) = 3 * words + floor(words * words / 512) words = ceil(bytes / 32) ```\n\nThere is no separate configured EVM memory cap here; memory is bounded by gas. If one `LOG0` spent the whole 30,000,000 gas budget expanding memory from zero and emitting data, the largest data payload would be 2,376,064 bytes, or 74,252 32-byte memory words, costing 29,999,923 gas. For `LOG4`, the same calculation gives 2,375,968 bytes, or 74,249 words, costing 29,999,776 gas. Both are about 2.27 MiB. Real contracts have lower practical limits because they also spend gas on transaction intrinsic cost, code, stack setup, memory writes, control flow, and any surrounding state changes.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Bytes"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "AccountIdentifier": {
         "description": "Identifier of an account.",
@@ -8262,6 +9201,352 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/Bytes"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "BlockNumberParam": {
+        "description": "Block selector accepted by `eth_getBlockByNumber`.",
+        "anyOf": [
+          {
+            "description": "Latest block known by the node.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlockTag"
+              }
+            ]
+          },
+          {
+            "description": "Concrete block height.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
+              }
+            ]
+          }
+        ]
+      },
+      "BlockTag": {
+        "description": "Ethereum block tags supported by this first-pass RPC surface.",
+        "oneOf": [
+          {
+            "description": "Latest finalized Casper state known to the node.",
+            "type": "string",
+            "enum": [
+              "latest"
+            ]
+          },
+          {
+            "description": "Alias for latest until pending EVM state is exposed.",
+            "type": "string",
+            "enum": [
+              "pending"
+            ]
+          }
+        ]
+      },
+      "EthU256": {
+        "description": "Ethereum JSON-RPC quantity encoded as canonical 0x-prefixed hexadecimal.",
+        "type": "string"
+      },
+      "BlockResponse": {
+        "description": "Ethereum block response returned by `eth_getBlockByNumber`.",
+        "type": "object",
+        "required": [
+          "baseFeePerGas",
+          "difficulty",
+          "extraData",
+          "gasLimit",
+          "gasUsed",
+          "hash",
+          "logsBloom",
+          "miner",
+          "mixHash",
+          "number",
+          "parentHash",
+          "receiptsRoot",
+          "sha3Uncles",
+          "size",
+          "stateRoot",
+          "timestamp",
+          "totalDifficulty",
+          "transactions",
+          "transactionsRoot",
+          "uncles"
+        ],
+        "properties": {
+          "number": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "hash": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "parentHash": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "nonce": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthHexData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mixHash": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "sha3Uncles": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "logsBloom": {
+            "$ref": "#/components/schemas/EthHexData"
+          },
+          "transactionsRoot": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "stateRoot": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "receiptsRoot": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "miner": {
+            "$ref": "#/components/schemas/EthAddress"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "totalDifficulty": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "extraData": {
+            "$ref": "#/components/schemas/EthHexData"
+          },
+          "size": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "gasLimit": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "gasUsed": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "transactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvmHash"
+            }
+          },
+          "uncles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvmHash"
+            }
+          },
+          "baseFeePerGas": {
+            "$ref": "#/components/schemas/EthU256"
+          }
+        }
+      },
+      "EthHexData": {
+        "type": "string"
+      },
+      "EthAddress": {
+        "type": "string"
+      },
+      "TransactionReceiptResponse": {
+        "description": "Ethereum transaction receipt response.",
+        "type": "object",
+        "required": [
+          "blockHash",
+          "blockNumber",
+          "cumulativeGasUsed",
+          "effectiveGasPrice",
+          "from",
+          "gasUsed",
+          "logs",
+          "logsBloom",
+          "status",
+          "transactionHash",
+          "transactionIndex",
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "transactionHash": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "blockHash": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "blockNumber": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "from": {
+            "$ref": "#/components/schemas/EthAddress"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthAddress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contractAddress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthAddress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "gasUsed": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "effectiveGasPrice": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "logs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogResponse"
+            }
+          },
+          "logsBloom": {
+            "$ref": "#/components/schemas/EthHexData"
+          },
+          "transactionIndex": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "cumulativeGasUsed": {
+            "$ref": "#/components/schemas/EthU256"
+          }
+        }
+      },
+      "LogResponse": {
+        "description": "Ethereum log response entry.",
+        "type": "object",
+        "required": [
+          "address",
+          "blockHash",
+          "blockNumber",
+          "data",
+          "logIndex",
+          "removed",
+          "topics",
+          "transactionHash",
+          "transactionIndex"
+        ],
+        "properties": {
+          "address": {
+            "$ref": "#/components/schemas/EthAddress"
+          },
+          "topics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvmHash"
+            }
+          },
+          "data": {
+            "$ref": "#/components/schemas/EthHexData"
+          },
+          "blockHash": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "blockNumber": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "transactionHash": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "transactionIndex": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "logIndex": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "removed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CallObject": {
+        "description": "Call object accepted by `eth_call`.",
+        "type": "object",
+        "properties": {
+          "from": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthAddress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthAddress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthHexData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthHexData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "value": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gas": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
               },
               {
                 "type": "null"

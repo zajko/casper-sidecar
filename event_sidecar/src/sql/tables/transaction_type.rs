@@ -7,6 +7,7 @@ use sea_query::{
 pub enum TransactionTypeId {
     Deploy = 0,
     Version1 = 1,
+    Evm = 2,
 }
 
 #[allow(clippy::enum_variant_names)]
@@ -52,6 +53,7 @@ pub fn create_initialise_stmt() -> SqResult<InsertStatement> {
             (TransactionTypeId::Version1 as u8).into(),
             "Version1".into(),
         ])?
+        .values(vec![(TransactionTypeId::Evm as u8).into(), "Evm".into()])?
         .on_conflict(
             OnConflict::column(TransactionType::TransactionTypeId)
                 .do_nothing()
