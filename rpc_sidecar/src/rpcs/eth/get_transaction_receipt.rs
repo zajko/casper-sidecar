@@ -138,12 +138,13 @@ impl RpcWithParams for GetTransactionReceipt {
             .block()
             .all_transaction_hashes()
             .collect::<Vec<TransactionHash>>();
-        let transaction_index = block_hashes
-            .iter()
-            .position(|candidate| *candidate == transaction_hash)
-            .ok_or_else(|| internal_error("receipt block does not contain transaction hash"))?;
+        // Casper block order may include non-EVM transactions. Keep the raw
+        // Casper index for prior receipt aggregation, but report indexes in
+        // the filtered Ethereum transaction list exposed by eth_getBlockByNumber.
+        let (block_transaction_index, transaction_index) =
+            transaction_indexes(&block_hashes, transaction_hash)?;
         let (prior_gas_used, prior_log_count) =
-            prior_evm_receipt_totals(node_client, &block_hashes[..transaction_index]).await?;
+            prior_evm_receipt_totals(node_client, &block_hashes[..block_transaction_index]).await?;
         let receipt = &evm_execution_result.receipt;
         let cumulative_gas_used = prior_gas_used.saturating_add(receipt.gas_used);
         let logs = receipt
@@ -179,6 +180,27 @@ impl RpcWithParams for GetTransactionReceipt {
             cumulative_gas_used: evm::EthU256::from(cumulative_gas_used),
         }))
     }
+}
+
+fn transaction_indexes(
+    block_hashes: &[TransactionHash],
+    transaction_hash: TransactionHash,
+) -> Result<(usize, usize), RpcError> {
+    let mut evm_transaction_index = 0usize;
+
+    for (block_transaction_index, candidate) in block_hashes.iter().copied().enumerate() {
+        let TransactionHash::Evm(_) = candidate else {
+            continue;
+        };
+        if candidate == transaction_hash {
+            return Ok((block_transaction_index, evm_transaction_index));
+        }
+        evm_transaction_index += 1;
+    }
+
+    Err(internal_error(
+        "receipt block does not contain EVM transaction hash",
+    ))
 }
 
 async fn prior_evm_receipt_totals(
@@ -225,5 +247,24 @@ fn receipt_log_response(
         transaction_index: evm::EthU256::from(transaction_index),
         log_index: evm::EthU256::from(log_index),
         removed: false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use casper_types::{DeployHash, Digest, TransactionV1Hash};
+
+    use super::*;
+
+    #[test]
+    fn transaction_indexes_reports_evm_filtered_index() {
+        let deploy = TransactionHash::from(DeployHash::new(Digest::from_raw([1; 32])));
+        let evm_a = TransactionHash::from(evm::TransactionHash::from_raw([2; evm::HASH_LENGTH]));
+        let v1 = TransactionHash::from(TransactionV1Hash::from_raw([3; 32]));
+        let evm_b = TransactionHash::from(evm::TransactionHash::from_raw([4; evm::HASH_LENGTH]));
+        let block_hashes = [deploy, evm_a, v1, evm_b];
+
+        assert_eq!(transaction_indexes(&block_hashes, evm_a).unwrap(), (1, 0));
+        assert_eq!(transaction_indexes(&block_hashes, evm_b).unwrap(), (3, 1));
     }
 }

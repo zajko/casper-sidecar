@@ -124,6 +124,9 @@ impl RpcWithParams for GetBlockByNumber {
             return Ok(None);
         };
         let block = block.block();
+        // Casper blocks can contain Deploy, V1, and EVM transactions. Ethereum
+        // clients only understand the EVM subset, so the block response and
+        // receipt transaction indexes use this filtered Ethereum view.
         let transactions = block
             .all_transaction_hashes()
             .filter_map(transaction_hash_to_evm_hash)
