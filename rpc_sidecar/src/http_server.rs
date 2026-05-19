@@ -1,6 +1,8 @@
 use std::{collections::HashMap, net::IpAddr, num::NonZeroU32, sync::Arc};
 
+use casper_event_types::SidecarEvent;
 use casper_json_rpc::{ConfigLimit, CorsOrigin, RequestHandlersBuilder};
+use tokio::sync::broadcast::Sender as BroadcastSender;
 
 use super::rpcs::{
     RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
@@ -10,10 +12,12 @@ use super::rpcs::{
     },
     docs::RpcDiscover,
     eth::{
-        BlockNumber as EthBlockNumber, Call as EthCall, ChainId as EthChainId,
-        GetBlockByNumber as EthGetBlockByNumber, GetTransactionCount as EthGetTransactionCount,
-        GetTransactionReceipt as EthGetTransactionReceipt,
-        SendRawTransaction as EthSendRawTransaction,
+        BlockNumber as EthBlockNumber, Call as EthCall, ChainId as EthChainId, EthFilterState,
+        GetBlockByNumber as EthGetBlockByNumber, GetFilterChanges as EthGetFilterChanges,
+        GetFilterLogs as EthGetFilterLogs, GetLogs as EthGetLogs,
+        GetTransactionCount as EthGetTransactionCount,
+        GetTransactionReceipt as EthGetTransactionReceipt, NewFilter as EthNewFilter,
+        SendRawTransaction as EthSendRawTransaction, UninstallFilter as EthUninstallFilter,
     },
     info::{GetChainspec, GetDeploy, GetValidatorChanges},
     state::{
@@ -38,6 +42,7 @@ const RPC_API_SERVER_NAME: &str = "JSON RPC";
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     node: Arc<dyn NodeClient>,
+    sidecar_event_sender: BroadcastSender<SidecarEvent>,
     ip_address: IpAddr,
     port: u16,
     default_limit: ConfigLimit,
@@ -47,11 +52,18 @@ pub async fn run(
     cors_origin: String,
 ) {
     let mut handlers = RequestHandlersBuilder::new();
+    let eth_filter_state = Arc::new(EthFilterState::new());
+
+    macro_rules! register_with_context {
+        ($rpc:ident, $($context:expr),+ $(,)?) => {{
+            let limit = limits.remove($rpc::METHOD).unwrap_or(default_limit.clone());
+            $rpc::register_as_handler($($context,)* &mut handlers, limit);
+        }};
+    }
 
     macro_rules! register {
         ($rpc:ident) => {
-            let limit = limits.remove($rpc::METHOD).unwrap_or(default_limit.clone());
-            $rpc::register_as_handler(node.clone(), &mut handlers, limit);
+            register_with_context!($rpc, node.clone());
         };
     }
 
@@ -88,48 +100,31 @@ pub async fn run(
     register!(EthGetTransactionCount);
     register!(EthSendRawTransaction);
     register!(EthGetTransactionReceipt);
+    register!(EthGetLogs);
     register!(EthCall);
+    register_with_context!(EthNewFilter, node.clone(), eth_filter_state.clone());
+    register_with_context!(EthGetFilterChanges, node.clone(), eth_filter_state.clone());
+    register_with_context!(EthGetFilterLogs, node.clone(), eth_filter_state.clone());
+    register_with_context!(EthUninstallFilter, eth_filter_state.clone());
 
     let handlers = handlers.build();
 
-    match cors_origin.as_str() {
-        "" => {
-            super::rpcs::run(
-                ip_address,
-                port,
-                handlers,
-                qps_limit,
-                max_body_bytes,
-                RPC_API_PATH,
-                RPC_API_SERVER_NAME,
-            )
-            .await;
-        }
-        "*" => {
-            super::rpcs::run_with_cors(
-                ip_address,
-                port,
-                handlers,
-                qps_limit,
-                max_body_bytes,
-                RPC_API_PATH,
-                RPC_API_SERVER_NAME,
-                CorsOrigin::Any,
-            )
-            .await;
-        }
-        _ => {
-            super::rpcs::run_with_cors(
-                ip_address,
-                port,
-                handlers,
-                qps_limit,
-                max_body_bytes,
-                RPC_API_PATH,
-                RPC_API_SERVER_NAME,
-                CorsOrigin::Specified(cors_origin),
-            )
-            .await;
-        }
-    }
+    let cors_header = match cors_origin.as_str() {
+        "" => None,
+        "*" => Some(CorsOrigin::Any),
+        _ => Some(CorsOrigin::Specified(cors_origin)),
+    };
+    super::rpcs::run_with_websocket(
+        ip_address,
+        port,
+        handlers,
+        node,
+        sidecar_event_sender,
+        qps_limit,
+        max_body_bytes,
+        RPC_API_PATH,
+        RPC_API_SERVER_NAME,
+        cors_header,
+    )
+    .await;
 }

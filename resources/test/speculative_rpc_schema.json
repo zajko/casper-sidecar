@@ -1261,6 +1261,19 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "description": "An EVM transaction hash.",
+            "type": "object",
+            "required": [
+              "Evm"
+            ],
+            "properties": {
+              "Evm": {
+                "$ref": "#/components/schemas/EvmTransactionHash"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -1272,8 +1285,16 @@
           }
         ]
       },
+      "EvmTransactionHash": {
+        "description": "A transaction hash produced by Ethereum transaction RLP hashing rules.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Digest"
+          }
+        ]
+      },
       "InitiatorAddr": {
-        "description": "The address of the initiator of a TransactionV1.",
+        "description": "The address of the initiator of a transaction.",
         "oneOf": [
           {
             "description": "The public key of the initiator.",
@@ -1300,8 +1321,25 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "description": "The EVM-native address recovered from the signed Ethereum transaction.",
+            "type": "object",
+            "required": [
+              "EvmAddress"
+            ],
+            "properties": {
+              "EvmAddress": {
+                "$ref": "#/components/schemas/Address"
+              }
+            },
+            "additionalProperties": false
           }
         ]
+      },
+      "Address": {
+        "description": "A 20-byte Ethereum account or contract address encoded as hexadecimal.",
+        "type": "string"
       },
       "Gas": {
         "description": "The `Gas` struct represents a `U512` amount of gas.",
@@ -1749,6 +1787,45 @@
             "properties": {
               "RawBytes": {
                 "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "EVM account metadata.",
+            "type": "object",
+            "required": [
+              "EvmAccount"
+            ],
+            "properties": {
+              "EvmAccount": {
+                "$ref": "#/components/schemas/Account2"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "EVM contract bytecode, addressed by [`crate::Key::EvmByteCode`].",
+            "type": "object",
+            "required": [
+              "EvmByteCode"
+            ],
+            "properties": {
+              "EvmByteCode": {
+                "$ref": "#/components/schemas/ByteCode2"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "EVM storage value for a single contract slot.",
+            "type": "object",
+            "required": [
+              "EvmStorage"
+            ],
+            "properties": {
+              "EvmStorage": {
+                "$ref": "#/components/schemas/StorageValue"
               }
             },
             "additionalProperties": false
@@ -3666,6 +3743,50 @@
           }
         ]
       },
+      "Account2": {
+        "description": "EVM account metadata stored in global state.",
+        "type": "object",
+        "required": [
+          "code_hash",
+          "main_purse",
+          "nonce"
+        ],
+        "properties": {
+          "nonce": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "code_hash": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "main_purse": {
+            "$ref": "#/components/schemas/URef"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EvmHash": {
+        "description": "A 32-byte EVM hash or storage word encoded as 0x-prefixed hexadecimal.",
+        "type": "string"
+      },
+      "ByteCode2": {
+        "description": "EVM contract bytecode stored in global state.",
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        }
+      },
+      "StorageValue": {
+        "description": "EVM storage value stored in global state.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EvmHash"
+          }
+        ]
+      },
       "U128": {
         "description": "Decimal representation of a 128-bit integer.",
         "type": "string"
@@ -3894,6 +4015,19 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "description": "An EVM transaction.",
+            "type": "object",
+            "required": [
+              "Evm"
+            ],
+            "properties": {
+              "Evm": {
+                "$ref": "#/components/schemas/Transaction2"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -4053,6 +4187,133 @@
               }
             },
             "additionalProperties": false
+          }
+        ]
+      },
+      "Transaction2": {
+        "description": "An unsigned Ethereum transaction payload plus one Ethereum-style Casper approval.",
+        "type": "object",
+        "required": [
+          "approvals",
+          "from",
+          "gas_limit",
+          "hash",
+          "input",
+          "kind",
+          "max_fee_per_gas",
+          "nonce",
+          "timestamp",
+          "ttl",
+          "value"
+        ],
+        "properties": {
+          "timestamp": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "ttl": {
+            "$ref": "#/components/schemas/TimeDiff"
+          },
+          "hash": {
+            "$ref": "#/components/schemas/EvmTransactionHash"
+          },
+          "from": {
+            "$ref": "#/components/schemas/Address"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TransactionKind"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Address"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nonce": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "gas_limit": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "gas_price": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint128",
+            "minimum": 0.0
+          },
+          "max_fee_per_gas": {
+            "type": "integer",
+            "format": "uint128",
+            "minimum": 0.0
+          },
+          "max_priority_fee_per_gas": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint128",
+            "minimum": 0.0
+          },
+          "value": {
+            "$ref": "#/components/schemas/U256"
+          },
+          "input": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "uint8",
+              "minimum": 0.0
+            }
+          },
+          "chain_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "approvals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Approval"
+            },
+            "uniqueItems": true
+          }
+        }
+      },
+      "TransactionKind": {
+        "description": "The supported Ethereum transaction envelope kinds.",
+        "oneOf": [
+          {
+            "description": "A legacy Ethereum transaction.",
+            "type": "string",
+            "enum": [
+              "Legacy"
+            ]
+          },
+          {
+            "description": "An EIP-2930 access-list transaction.",
+            "type": "string",
+            "enum": [
+              "Eip2930"
+            ]
+          },
+          {
+            "description": "An EIP-1559 dynamic-fee transaction.",
+            "type": "string",
+            "enum": [
+              "Eip1559"
+            ]
           }
         ]
       }

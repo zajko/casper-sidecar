@@ -164,14 +164,8 @@ impl SseData {
     /// Returns a random `SseData::TransactionProcessed`.
     pub fn random_transaction_processed(rng: &mut TestRng) -> Self {
         let transaction = Transaction::random(rng);
-        let timestamp = match &transaction {
-            Transaction::Deploy(deploy) => deploy.header().timestamp(),
-            Transaction::V1(v1_transaction) => v1_transaction.timestamp(),
-        };
-        let ttl = match &transaction {
-            Transaction::Deploy(deploy) => deploy.header().ttl(),
-            Transaction::V1(v1_transaction) => v1_transaction.ttl(),
-        };
+        let timestamp = transaction.timestamp();
+        let ttl = transaction.ttl();
 
         SseData::TransactionProcessed {
             transaction_hash: Box::new(TransactionHash::random(rng)),

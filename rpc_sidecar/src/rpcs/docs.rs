@@ -21,9 +21,11 @@ use super::{
     },
     eth::{
         BlockNumber as EthBlockNumber, Call as EthCall, ChainId as EthChainId,
-        GetBlockByNumber as EthGetBlockByNumber, GetTransactionCount as EthGetTransactionCount,
-        GetTransactionReceipt as EthGetTransactionReceipt,
-        SendRawTransaction as EthSendRawTransaction,
+        GetBlockByNumber as EthGetBlockByNumber, GetFilterChanges as EthGetFilterChanges,
+        GetFilterLogs as EthGetFilterLogs, GetLogs as EthGetLogs,
+        GetTransactionCount as EthGetTransactionCount,
+        GetTransactionReceipt as EthGetTransactionReceipt, NewFilter as EthNewFilter,
+        SendRawTransaction as EthSendRawTransaction, UninstallFilter as EthUninstallFilter,
     },
     info::{
         GetChainspec, GetDeploy, GetPeers, GetReward, GetStatus, GetTransaction,
@@ -117,6 +119,15 @@ fn build_open_rpc_schema() -> OpenRpcSchema {
     schema.push_with_params::<EthGetTransactionReceipt>(
         "returns an Ethereum-compatible receipt for an executed EVM transaction",
     );
+    schema.push_with_params::<EthGetLogs>("returns Ethereum-compatible logs matching a filter");
+    schema.push_with_params::<EthNewFilter>("creates a process-local Ethereum log filter");
+    schema.push_with_params::<EthGetFilterChanges>(
+        "returns Ethereum-compatible logs observed since the last filter poll",
+    );
+    schema.push_with_params::<EthGetFilterLogs>(
+        "returns all Ethereum-compatible logs matching an installed filter",
+    );
+    schema.push_with_params::<EthUninstallFilter>("removes a process-local Ethereum log filter");
     schema.push_with_params::<EthCall>("executes a read-only EVM call");
     schema.push_with_optional_params::<GetBlock>("returns a Block from the network");
     schema.push_with_optional_params::<GetBlockTransfers>(

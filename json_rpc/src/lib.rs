@@ -93,6 +93,7 @@ use datasize::DataSize;
 use governor::Quota;
 use http::{Method, header::CONTENT_TYPE};
 use serde::Deserialize;
+use serde_json::{Map, Value};
 use warp::{Filter, Reply, filters::BoxedFilter};
 
 pub use error::{Error, ErrorCodeT, ReservedErrorCode, RpcErrorCode};
@@ -106,6 +107,33 @@ const JSON_RPC_VERSION: &str = "2.0";
 pub const DEFAULT_LIMIT_REQUESTS: NonZeroU32 = NonZeroU32::new(10).unwrap();
 /// Default value for limiter's period of time.
 pub const DEFAULT_LIMIT_PERIOD: TimeDiff = TimeDiff::from_seconds(1);
+
+/// Handles a raw JSON-RPC request body without requiring an HTTP transport.
+///
+/// This is intended for transports such as WebSocket that need to reuse the same request
+/// validation and registered handlers as the HTTP JSON-RPC route. Notifications return `None`.
+#[must_use]
+pub async fn handle_json_request_bytes(
+    body: &[u8],
+    handlers: RequestHandlers,
+    allow_unknown_fields: bool,
+) -> Option<Response> {
+    match serde_json::from_slice::<Map<String, Value>>(body) {
+        Ok(unvalidated_request) => {
+            match request::Request::new(unvalidated_request, allow_unknown_fields) {
+                Ok(request) => Some(handlers.handle_request(request, body.len()).await),
+                Err(request::ErrorOrRejection::Error { id, error }) => {
+                    Some(Response::new_failure(id, error))
+                }
+                Err(request::ErrorOrRejection::Rejection(_)) => None,
+            }
+        }
+        Err(error) => {
+            let error = Error::new(ReservedErrorCode::ParseError, error.to_string());
+            Some(Response::new_failure(Value::Null, error))
+        }
+    }
+}
 
 /// Specifies the CORS origin
 pub enum CorsOrigin {

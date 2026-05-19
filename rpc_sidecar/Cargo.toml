@@ -42,8 +42,9 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tokio-util = { version = "0.6", features = ["codec"] }
 tracing = { workspace = true, default-features = true }
 warp = { workspace = true, features = ["compression"] }
-tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 toml.workspace = true
+alloy-consensus = { version = "=1.0.41", default-features = false }
+alloy-primitives = { version = "=1.5.7", default-features = false, features = ["rlp"] }
 
 [dev-dependencies]
 casper-types = { workspace = true, features = [

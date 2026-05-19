@@ -1,7 +1,7 @@
 use crate::{
     sql::tables,
     types::{
-        database::{DatabaseReader, DatabaseWriteError, DatabaseWriter, TransactionTypeId},
+        database::{DatabaseReader, DatabaseWriteError, DatabaseWriter},
         sse_events::*,
     },
 };
@@ -42,14 +42,7 @@ pub async fn should_save_and_retrieve_transaction_accepted<DB: DatabaseReader + 
     let mut test_rng = TestRng::new();
 
     let transaction_accepted = TransactionAccepted::random(&mut test_rng);
-    let transaction_type_id = match transaction_accepted.transaction_type_id() {
-        crate::sql::tables::transaction_type::TransactionTypeId::Deploy => {
-            TransactionTypeId::Deploy
-        }
-        crate::sql::tables::transaction_type::TransactionTypeId::Version1 => {
-            TransactionTypeId::Version1
-        }
-    };
+    let transaction_type_id = transaction_accepted.api_transaction_type_id();
     db.save_transaction_accepted(
         transaction_accepted.clone(),
         1,
@@ -73,14 +66,7 @@ pub async fn should_save_and_retrieve_transaction_processed<DB: DatabaseReader +
 ) {
     let mut test_rng = TestRng::new();
     let transaction_processed = TransactionProcessed::random(&mut test_rng, None);
-    let transaction_type_id = match transaction_processed.transaction_type_id() {
-        crate::sql::tables::transaction_type::TransactionTypeId::Deploy => {
-            TransactionTypeId::Deploy
-        }
-        crate::sql::tables::transaction_type::TransactionTypeId::Version1 => {
-            TransactionTypeId::Version1
-        }
-    };
+    let transaction_type_id = transaction_processed.api_transaction_type_id();
     db.save_transaction_processed(
         transaction_processed.clone(),
         1,
@@ -104,14 +90,7 @@ pub async fn should_save_and_retrieve_transaction_expired<DB: DatabaseReader + D
 ) {
     let mut test_rng = TestRng::new();
     let transaction_expired = TransactionExpired::random(&mut test_rng, None);
-    let transaction_type_id = match transaction_expired.transaction_type_id() {
-        crate::sql::tables::transaction_type::TransactionTypeId::Deploy => {
-            TransactionTypeId::Deploy
-        }
-        crate::sql::tables::transaction_type::TransactionTypeId::Version1 => {
-            TransactionTypeId::Version1
-        }
-    };
+    let transaction_type_id = transaction_expired.api_transaction_type_id();
     db.save_transaction_expired(
         transaction_expired.clone(),
         1,
@@ -138,14 +117,7 @@ pub async fn should_retrieve_transaction_aggregate_of_accepted<
     let mut test_rng = TestRng::new();
 
     let transaction_accepted = TransactionAccepted::random(&mut test_rng);
-    let transaction_type_id = match transaction_accepted.transaction_type_id() {
-        crate::sql::tables::transaction_type::TransactionTypeId::Deploy => {
-            TransactionTypeId::Deploy
-        }
-        crate::sql::tables::transaction_type::TransactionTypeId::Version1 => {
-            TransactionTypeId::Version1
-        }
-    };
+    let transaction_type_id = transaction_accepted.api_transaction_type_id();
 
     db.save_transaction_accepted(
         transaction_accepted.clone(),
@@ -174,14 +146,7 @@ pub async fn should_retrieve_transaction_aggregate_of_processed<
     let transaction_accepted = TransactionAccepted::random(&mut test_rng);
     let transaction_processed =
         TransactionProcessed::random(&mut test_rng, Some(transaction_accepted.transaction_hash()));
-    let transaction_type_id = match transaction_accepted.transaction_type_id() {
-        crate::sql::tables::transaction_type::TransactionTypeId::Deploy => {
-            TransactionTypeId::Deploy
-        }
-        crate::sql::tables::transaction_type::TransactionTypeId::Version1 => {
-            TransactionTypeId::Version1
-        }
-    };
+    let transaction_type_id = transaction_accepted.api_transaction_type_id();
 
     db.save_transaction_accepted(
         transaction_accepted.clone(),
@@ -220,14 +185,7 @@ pub async fn should_retrieve_transaction_aggregate_of_expired<
     let transaction_accepted = TransactionAccepted::random(&mut test_rng);
     let transaction_expired =
         TransactionExpired::random(&mut test_rng, Some(transaction_accepted.transaction_hash()));
-    let transaction_type_id = match transaction_accepted.transaction_type_id() {
-        crate::sql::tables::transaction_type::TransactionTypeId::Deploy => {
-            TransactionTypeId::Deploy
-        }
-        crate::sql::tables::transaction_type::TransactionTypeId::Version1 => {
-            TransactionTypeId::Version1
-        }
-    };
+    let transaction_type_id = transaction_accepted.api_transaction_type_id();
 
     db.save_transaction_accepted(
         transaction_accepted.clone(),

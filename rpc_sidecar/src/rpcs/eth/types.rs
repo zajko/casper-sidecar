@@ -1,16 +1,14 @@
 use std::sync::LazyLock;
 
 use casper_json_rpc::{Error as RpcError, Params, ReservedErrorCode};
-use casper_types::{BlockIdentifier, TransactionHash, evm};
+use casper_types::{BlockIdentifier, evm};
 use schemars::{JsonSchema, r#gen::SchemaGenerator, schema::Schema};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use tiny_keccak::{Hasher, Keccak};
 
 use crate::rpcs::docs::DocExample;
 
 pub(super) const DEFAULT_ETH_CALL_GAS_LIMIT: u64 = 30_000_000;
-pub(super) const ETH_LOG_BLOOM_LENGTH: usize = 256;
 
 static ETH_U256_EXAMPLE: LazyLock<evm::EthU256> = LazyLock::new(|| evm::EthU256::ZERO);
 static ETH_ADDRESS_EXAMPLE: LazyLock<EthAddress> = LazyLock::new(|| EthAddress(evm::Address::ZERO));
@@ -133,10 +131,16 @@ impl DocExample for HexData {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum BlockTag {
+    /// Genesis block.
+    Earliest,
     /// Latest finalized Casper state known to the node.
     Latest,
     /// Alias for latest until pending EVM state is exposed.
     Pending,
+    /// Alias for latest until safe EVM state is exposed.
+    Safe,
+    /// Alias for latest finalized Casper state.
+    Finalized,
 }
 
 impl Default for BlockTag {
@@ -158,11 +162,24 @@ pub(crate) enum BlockNumberParam {
 impl BlockNumberParam {
     pub(super) fn identifier(self) -> Result<Option<BlockIdentifier>, RpcError> {
         match self {
-            BlockNumberParam::Tag(BlockTag::Latest | BlockTag::Pending) => Ok(None),
+            BlockNumberParam::Tag(BlockTag::Earliest) => Ok(Some(BlockIdentifier::Height(0))),
+            BlockNumberParam::Tag(
+                BlockTag::Latest | BlockTag::Pending | BlockTag::Safe | BlockTag::Finalized,
+            ) => Ok(None),
             BlockNumberParam::Height(height) => height
                 .as_u64()
                 .map(|height| Some(BlockIdentifier::Height(height)))
                 .map_err(invalid_params),
+        }
+    }
+
+    pub(super) fn height(self) -> Result<Option<u64>, RpcError> {
+        match self {
+            BlockNumberParam::Tag(BlockTag::Earliest) => Ok(Some(0)),
+            BlockNumberParam::Tag(
+                BlockTag::Latest | BlockTag::Pending | BlockTag::Safe | BlockTag::Finalized,
+            ) => Ok(None),
+            BlockNumberParam::Height(height) => height.as_u64().map(Some).map_err(invalid_params),
         }
     }
 }
@@ -188,53 +205,10 @@ where
     })
 }
 
-pub(super) fn transaction_hash_to_evm_hash(transaction_hash: TransactionHash) -> Option<evm::Hash> {
-    match transaction_hash {
-        TransactionHash::Evm(hash) => Some(hash.hash()),
-        TransactionHash::Deploy(_) | TransactionHash::V1(_) => None,
-    }
-}
-
-pub(super) fn digest_to_evm_hash(digest: impl AsRef<[u8]>) -> evm::Hash {
-    let mut bytes = [0u8; evm::HASH_LENGTH];
-    bytes.copy_from_slice(digest.as_ref());
-    evm::Hash::new(bytes)
-}
-
 pub(super) fn block_hash_to_evm_hash(block_hash: impl AsRef<[u8]>) -> evm::Hash {
     let mut bytes = [0u8; evm::HASH_LENGTH];
     bytes.copy_from_slice(block_hash.as_ref());
     evm::Hash::new(bytes)
-}
-
-pub(super) fn logs_bloom(logs: &[evm::Log]) -> Vec<u8> {
-    let mut bloom = [0u8; ETH_LOG_BLOOM_LENGTH];
-    for log in logs {
-        add_bloom_entry(&mut bloom, log.address.as_ref());
-        for topic in &log.topics {
-            add_bloom_entry(&mut bloom, topic.as_ref());
-        }
-    }
-    bloom.to_vec()
-}
-
-/// Implements the Ethereum Yellow Paper, section 4.4.1, equations (30)-(34):
-/// `M3:2048` sets `B2047-m(x,i)` for `i` in `{0, 2, 4}`, where
-/// `m(x, i) = KEC(x)[i, i + 1] mod 2048`.
-fn add_bloom_entry(bloom: &mut [u8; ETH_LOG_BLOOM_LENGTH], bytes: &[u8]) {
-    let hash = keccak(bytes);
-    for index in [0usize, 2, 4] {
-        let bit = ((((hash[index] as usize) << 8) | hash[index + 1] as usize) & 2047) as usize;
-        bloom[ETH_LOG_BLOOM_LENGTH - 1 - bit / 8] |= 1 << (bit % 8);
-    }
-}
-
-fn keccak(bytes: &[u8]) -> [u8; evm::HASH_LENGTH] {
-    let mut hasher = Keccak::v256();
-    let mut output = [0u8; evm::HASH_LENGTH];
-    hasher.update(bytes);
-    hasher.finalize(&mut output);
-    output
 }
 
 fn parse_address(value: &str) -> Result<evm::Address, String> {

@@ -467,6 +467,9 @@ pub enum InvalidTransactionOrDeploy {
     /// The transaction sent to the network was invalid for an unspecified reason
     #[error("The transaction sent to the network was invalid for an unspecified reason")]
     TransactionUnspecified,
+    /// The EVM transaction nonce did not match the account nonce.
+    #[error("The EVM transaction nonce does not match the account nonce")]
+    TransactionEvmInvalidNonce,
     /// The catchall error from a casper node
     #[error("The transaction or deploy sent to the network was invalid for an unspecified reason")]
     TransactionOrDeployUnspecified,
@@ -660,6 +663,7 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
                 Self::TransactionUnableToCalculateGasCost
             }
             ErrorCode::InvalidTransactionPricingMode => Self::TransactionPricingMode,
+            ErrorCode::InvalidTransactionEvmInvalidNonce => Self::TransactionEvmInvalidNonce,
             ErrorCode::EmptyBlockchain => Self::EmptyBlockchain,
             ErrorCode::ExpectedDeploy => Self::ExpectedDeploy,
             ErrorCode::ExpectedTransaction => Self::ExpectedTransaction,
@@ -876,6 +880,7 @@ impl Error {
                 | ErrorCode::InvalidTransactionUnableToCalculateGasLimit
                 | ErrorCode::InvalidTransactionUnableToCalculateGasCost
                 | ErrorCode::InvalidTransactionPricingMode
+                | ErrorCode::InvalidTransactionEvmInvalidNonce
                 | ErrorCode::EmptyBlockchain
                 | ErrorCode::ExpectedDeploy
                 | ErrorCode::ExpectedTransaction
@@ -1749,6 +1754,10 @@ mod tests {
         assert!(matches!(
             Error::from_error_code(ErrorCode::InvalidTransactionOrDeployUnspecified as u16),
             Error::InvalidTransaction(InvalidTransactionOrDeploy::TransactionOrDeployUnspecified)
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::InvalidTransactionEvmInvalidNonce as u16),
+            Error::InvalidTransaction(InvalidTransactionOrDeploy::TransactionEvmInvalidNonce)
         ));
         assert!(matches!(
             Error::from_error_code(ErrorCode::ExpectedNamedArguments as u16),

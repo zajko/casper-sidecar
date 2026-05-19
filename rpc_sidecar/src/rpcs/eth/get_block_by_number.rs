@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     super::{NodeClient, RpcWithParams},
+    projection::project_block,
     types::{
-        BlockNumberParam, BlockTag, DEFAULT_ETH_CALL_GAS_LIMIT, ETH_LOG_BLOOM_LENGTH, EthAddress,
-        HexData, block_hash_to_evm_hash, digest_to_evm_hash, internal_error, invalid_params,
-        parse_positional_params, transaction_hash_to_evm_hash,
+        BlockNumberParam, BlockTag, DEFAULT_ETH_CALL_GAS_LIMIT, EthAddress, HexData,
+        invalid_params, parse_positional_params,
     },
 };
 use crate::rpcs::docs::DocExample;
@@ -116,41 +116,29 @@ impl RpcWithParams for GetBlockByNumber {
                 "full transaction objects are not supported yet",
             ));
         }
-        let Some(block) = node_client
-            .read_block_with_signatures(params.identifier()?)
-            .await
-            .map_err(internal_error)?
-        else {
+        let Some(block) = project_block(node_client, params.identifier()?).await? else {
             return Ok(None);
         };
-        let block = block.block();
-        // Casper blocks can contain Deploy, V1, and EVM transactions. Ethereum
-        // clients only understand the EVM subset, so the block response and
-        // receipt transaction indexes use this filtered Ethereum view.
-        let transactions = block
-            .all_transaction_hashes()
-            .filter_map(transaction_hash_to_evm_hash)
-            .collect::<Vec<_>>();
         Ok(Some(BlockResponse {
-            number: evm::EthU256::from(block.height()),
-            hash: block_hash_to_evm_hash(block.hash()),
-            parent_hash: block_hash_to_evm_hash(block.parent_hash()),
+            number: block.number,
+            hash: block.hash,
+            parent_hash: block.parent_hash,
             nonce: Some(HexData::from(vec![0; 8])),
             mix_hash: evm::Hash::ZERO,
             sha3_uncles: evm::EMPTY_CODE_HASH,
-            logs_bloom: HexData::from(vec![0; ETH_LOG_BLOOM_LENGTH]),
-            transactions_root: digest_to_evm_hash(block.body_hash()),
-            state_root: digest_to_evm_hash(block.state_root_hash()),
-            receipts_root: evm::Hash::ZERO,
+            logs_bloom: block.logs_bloom,
+            transactions_root: block.transactions_root,
+            state_root: block.state_root,
+            receipts_root: block.receipts_root,
             miner: EthAddress::from(evm::Address::ZERO),
             difficulty: evm::EthU256::from(0u8),
             total_difficulty: evm::EthU256::from(0u8),
             extra_data: HexData::from(Vec::new()),
             size: evm::EthU256::from(0u8),
             gas_limit: evm::EthU256::from(DEFAULT_ETH_CALL_GAS_LIMIT),
-            gas_used: evm::EthU256::from(0u8),
-            timestamp: evm::EthU256::from(block.timestamp().millis() / 1_000),
-            transactions,
+            gas_used: block.gas_used,
+            timestamp: block.timestamp,
+            transactions: block.transactions,
             uncles: Vec::new(),
             base_fee_per_gas: evm::EthU256::from(0u8),
         }))

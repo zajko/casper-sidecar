@@ -2041,6 +2041,366 @@
       ]
     },
     {
+      "name": "eth_getLogs",
+      "summary": "returns Ethereum-compatible logs matching a filter",
+      "params": [
+        {
+          "name": "fromBlock",
+          "schema": {
+            "default": null,
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlockNumberParam"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": false
+        },
+        {
+          "name": "toBlock",
+          "schema": {
+            "default": null,
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlockNumberParam"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": false
+        },
+        {
+          "name": "blockHash",
+          "schema": {
+            "default": null,
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvmHash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": false
+        },
+        {
+          "name": "address",
+          "schema": {
+            "default": null,
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AddressFilter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": false
+        },
+        {
+          "name": "topics",
+          "schema": {
+            "default": null,
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TopicFilter"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "eth_getLogs_result",
+        "schema": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/LogResponse"
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getLogs_example",
+          "params": [
+            {
+              "name": "fromBlock",
+              "value": null
+            },
+            {
+              "name": "toBlock",
+              "value": null
+            },
+            {
+              "name": "blockHash",
+              "value": null
+            },
+            {
+              "name": "address",
+              "value": null
+            },
+            {
+              "name": "topics",
+              "value": null
+            }
+          ],
+          "result": {
+            "name": "eth_getLogs_example_result",
+            "value": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_newFilter",
+      "summary": "creates a process-local Ethereum log filter",
+      "params": [
+        {
+          "name": "fromBlock",
+          "schema": {
+            "default": null,
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlockNumberParam"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": false
+        },
+        {
+          "name": "toBlock",
+          "schema": {
+            "default": null,
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlockNumberParam"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": false
+        },
+        {
+          "name": "blockHash",
+          "schema": {
+            "default": null,
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvmHash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": false
+        },
+        {
+          "name": "address",
+          "schema": {
+            "default": null,
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AddressFilter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": false
+        },
+        {
+          "name": "topics",
+          "schema": {
+            "default": null,
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TopicFilter"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "eth_newFilter_result",
+        "schema": {
+          "description": "Ethereum JSON-RPC quantity encoded as canonical 0x-prefixed hexadecimal.",
+          "type": "string"
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_newFilter_example",
+          "params": [
+            {
+              "name": "fromBlock",
+              "value": null
+            },
+            {
+              "name": "toBlock",
+              "value": null
+            },
+            {
+              "name": "blockHash",
+              "value": null
+            },
+            {
+              "name": "address",
+              "value": null
+            },
+            {
+              "name": "topics",
+              "value": null
+            }
+          ],
+          "result": {
+            "name": "eth_newFilter_example_result",
+            "value": "0x0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_getFilterChanges",
+      "summary": "returns Ethereum-compatible logs observed since the last filter poll",
+      "params": [
+        {
+          "name": "filter_id",
+          "schema": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getFilterChanges_result",
+        "schema": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/LogResponse"
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getFilterChanges_example",
+          "params": [
+            {
+              "name": "filter_id",
+              "value": "0x0"
+            }
+          ],
+          "result": {
+            "name": "eth_getFilterChanges_example_result",
+            "value": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_getFilterLogs",
+      "summary": "returns all Ethereum-compatible logs matching an installed filter",
+      "params": [
+        {
+          "name": "filter_id",
+          "schema": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getFilterLogs_result",
+        "schema": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/LogResponse"
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getFilterLogs_example",
+          "params": [
+            {
+              "name": "filter_id",
+              "value": "0x0"
+            }
+          ],
+          "result": {
+            "name": "eth_getFilterLogs_example_result",
+            "value": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_uninstallFilter",
+      "summary": "removes a process-local Ethereum log filter",
+      "params": [
+        {
+          "name": "filter_id",
+          "schema": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_uninstallFilter_result",
+        "schema": {
+          "type": "boolean"
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_uninstallFilter_example",
+          "params": [
+            {
+              "name": "filter_id",
+              "value": "0x0"
+            }
+          ],
+          "result": {
+            "name": "eth_uninstallFilter_example_result",
+            "value": true
+          }
+        }
+      ]
+    },
+    {
       "name": "eth_call",
       "summary": "executes a read-only EVM call",
       "params": [
@@ -9234,6 +9594,13 @@
         "description": "Ethereum block tags supported by this first-pass RPC surface.",
         "oneOf": [
           {
+            "description": "Genesis block.",
+            "type": "string",
+            "enum": [
+              "earliest"
+            ]
+          },
+          {
             "description": "Latest finalized Casper state known to the node.",
             "type": "string",
             "enum": [
@@ -9245,6 +9612,20 @@
             "type": "string",
             "enum": [
               "pending"
+            ]
+          },
+          {
+            "description": "Alias for latest until safe EVM state is exposed.",
+            "type": "string",
+            "enum": [
+              "safe"
+            ]
+          },
+          {
+            "description": "Alias for latest finalized Casper state.",
+            "type": "string",
+            "enum": [
+              "finalized"
             ]
           }
         ]
@@ -9488,6 +9869,32 @@
             "type": "boolean"
           }
         }
+      },
+      "AddressFilter": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/EthAddress"
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EthAddress"
+            }
+          }
+        ]
+      },
+      "TopicFilter": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvmHash"
+            }
+          }
+        ]
       },
       "CallObject": {
         "description": "Call object accepted by `eth_call`.",

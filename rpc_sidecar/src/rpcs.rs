@@ -39,11 +39,13 @@ use warp::{
     reply::{self, Reply},
 };
 
+use casper_event_types::SidecarEvent;
 use casper_json_rpc::{
     ConfigLimit, CorsOrigin, Error as RpcError, Params, RequestHandlers, RequestHandlersBuilder,
     ReservedErrorCode,
 };
 use casper_types::SemVer;
+use tokio::sync::broadcast::Sender as BroadcastSender;
 
 pub use common::ErrorData;
 use docs::DocExample;
@@ -387,6 +389,53 @@ pub(super) async fn run_with_cors(
         ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
         cors_header,
     );
+    run_service(ip_address, port, service_routes, server_name, qps_limit).await;
+}
+
+/// Start JSON RPC server with WebSocket support in a background.
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn run_with_websocket(
+    ip_address: IpAddr,
+    port: u16,
+    handlers: RequestHandlers,
+    node_client: Arc<dyn NodeClient>,
+    sidecar_event_sender: BroadcastSender<SidecarEvent>,
+    qps_limit: NonZeroU32,
+    max_body_bytes: u64,
+    api_path: &'static str,
+    server_name: &'static str,
+    cors_header: Option<CorsOrigin>,
+) {
+    let websocket_origin_policy =
+        eth::WebSocketOriginPolicy::from_cors_header(cors_header.as_ref());
+    let http_routes = match cors_header {
+        Some(cors_header) => casper_json_rpc::route_with_cors(
+            api_path,
+            max_body_bytes,
+            handlers.clone(),
+            ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
+            cors_header,
+        )
+        .map(Reply::into_response)
+        .boxed(),
+        None => casper_json_rpc::route(
+            api_path,
+            max_body_bytes,
+            handlers.clone(),
+            ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
+        )
+        .map(Reply::into_response)
+        .boxed(),
+    };
+    let websocket_routes = eth::websocket_route(
+        api_path,
+        handlers,
+        node_client,
+        sidecar_event_sender,
+        ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
+        websocket_origin_policy,
+    );
+    let service_routes = websocket_routes.or(http_routes).unify().boxed();
     run_service(ip_address, port, service_routes, server_name, qps_limit).await;
 }
 

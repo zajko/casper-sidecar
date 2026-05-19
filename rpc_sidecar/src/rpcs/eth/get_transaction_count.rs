@@ -70,14 +70,16 @@ impl RpcWithParams for GetTransactionCount {
     ) -> Result<evm::EthU256, RpcError> {
         let address = params.address();
         let maybe_value = node_client
-            .query_global_state(None, Key::EvmAccount(address), vec![])
+            .query_global_state(None, Key::Evm(evm::EvmAddr::Nonce(address)), vec![])
             .await
             .map_err(internal_error)?;
         let nonce = match maybe_value.map(|value| value.into_inner().0) {
-            Some(StoredValue::EvmAccount(account)) => account.nonce(),
+            Some(StoredValue::CLValue(cl_value)) => cl_value
+                .into_t::<u64>()
+                .map_err(|error| internal_error(format!("invalid EVM nonce CLValue: {error}")))?,
             Some(other) => {
                 return Err(internal_error(format!(
-                    "expected EVM account under key, found {}",
+                    "expected EVM nonce under key, found {}",
                     other.type_name()
                 )));
             }
@@ -98,14 +100,13 @@ mod tests {
     use crate::rpcs::test_utils::BinaryPortMock;
 
     #[tokio::test]
-    async fn get_transaction_count_reads_evm_account_nonce() {
+    async fn get_transaction_count_reads_evm_nonce() {
         let client = BinaryPortMock::new();
         let address = evm::Address::new([1; evm::ADDRESS_LENGTH]);
-        let account = evm::Account::new(12, evm::Hash::ZERO, evm::deterministic_purse(address));
         let request = GlobalStateRequest::new(
             None,
             GlobalStateEntityQualifier::Item {
-                base_key: Key::EvmAccount(address),
+                base_key: Key::Evm(evm::EvmAddr::Nonce(address)),
                 path: Vec::new(),
             },
         );
@@ -113,7 +114,7 @@ mod tests {
             .when_then(
                 Command::Get(GetRequest::State(Box::new(request))),
                 BinaryResponse::from_option(Some(GlobalStateQueryResult::new(
-                    StoredValue::EvmAccount(account),
+                    StoredValue::CLValue(casper_types::CLValue::from_t(12u64).unwrap()),
                     Vec::new(),
                 ))),
             )

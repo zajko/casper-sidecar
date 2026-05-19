@@ -60,14 +60,18 @@ pub async fn build_rpc_server<'a>(
         node_client
     };
     if main_server_config.enable_server {
-        let future = run_rpc(main_server_config, node_client.clone())
-            .map(|q| {
-                if let Err(e) = q {
-                    error!("Rpc server finished with error: {e}");
-                }
-                Ok(ExitCode::SUCCESS)
-            })
-            .boxed();
+        let future = run_rpc(
+            main_server_config,
+            node_client.clone(),
+            sidecar_event_sender.clone(),
+        )
+        .map(|q| {
+            if let Err(e) = q {
+                error!("Rpc server finished with error: {e}");
+            }
+            Ok(ExitCode::SUCCESS)
+        })
+        .boxed();
         futures.push(future);
     }
     let speculative_server_config = config.speculative_exec_server;
@@ -111,9 +115,14 @@ async fn retype_future_vec(
     futures::future::select_all(futures).await.0
 }
 
-async fn run_rpc(config: RpcConfig, node_client: Arc<dyn NodeClient>) -> Result<(), Error> {
+async fn run_rpc(
+    config: RpcConfig,
+    node_client: Arc<dyn NodeClient>,
+    sidecar_event_sender: Sender<SidecarEvent>,
+) -> Result<(), Error> {
     run_rpc_server(
         node_client,
+        sidecar_event_sender,
         config.ip_address,
         config.port,
         config.default_limit(),
