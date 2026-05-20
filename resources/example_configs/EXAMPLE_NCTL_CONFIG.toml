@@ -4,6 +4,7 @@ ip_address = "0.0.0.0"
 port = 11102
 qps_limit = 100
 max_body_bytes = 4000000
+max_eth_log_block_range = 10_000
 cors_origin = ""
 default_limit_requests = 100
 default_limit_period = "1s"

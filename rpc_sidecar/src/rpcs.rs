@@ -404,6 +404,7 @@ pub(super) async fn run_with_websocket(
     max_body_bytes: u64,
     api_path: &'static str,
     server_name: &'static str,
+    max_eth_log_block_range: u64,
     cors_header: Option<CorsOrigin>,
 ) {
     let websocket_origin_policy =
@@ -434,6 +435,7 @@ pub(super) async fn run_with_websocket(
         sidecar_event_sender,
         ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
         websocket_origin_policy,
+        max_eth_log_block_range,
     );
     let service_routes = websocket_routes.or(http_routes).unify().boxed();
     run_service(ip_address, port, service_routes, server_name, qps_limit).await;

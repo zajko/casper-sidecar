@@ -202,6 +202,7 @@ ip_address = '0.0.0.0'
 port = 7777
 qps_limit = 100
 max_body_bytes = 2_621_440
+max_eth_log_block_range = 10_000
 cors_origin = ''
 default_limit_requests = 100
 default_limit_period = "1s"
@@ -236,6 +237,7 @@ max_attempts = 30
 - `main_server.port` - Port under which the main RPC API server will be available.
 - `main_server.qps_limit` - The maximum number of requests per second.
 - `main_server.max_body_bytes` - Maximum body size of request to API in bytes.
+- `main_server.max_eth_log_block_range` - optional (default `10_000`). Maximum number of blocks an Ethereum log query or subscription catch-up range can scan.
 - `main_server.cors_origin` - Configures the CORS origin.
 - `main_server.default_limit_requests` - Default limit for the JSON-RPC per action limitation: maximum requests permitted for one action in a period of time
 - `main_server.default_limit_period` - Default period of time for the JSON-RPC request limit in human-readable format

@@ -20,6 +20,7 @@ impl GetFilterLogs {
     pub(crate) fn register_as_handler(
         node_client: Arc<dyn NodeClient>,
         filter_state: Arc<EthFilterState>,
+        max_block_range: u64,
         handlers_builder: &mut RequestHandlersBuilder,
         limit: ConfigLimit,
     ) {
@@ -28,7 +29,7 @@ impl GetFilterLogs {
             let filter_state = Arc::clone(&filter_state);
             async move {
                 let filter_id = filter_id_from_params(maybe_params)?;
-                Self::do_handle_request(node_client, filter_state, filter_id).await
+                Self::do_handle_request(node_client, filter_state, filter_id, max_block_range).await
             }
         };
         handlers_builder.register_handler(Self::METHOD, handler, &limit);
@@ -38,12 +39,13 @@ impl GetFilterLogs {
         node_client: Arc<dyn NodeClient>,
         filter_state: Arc<EthFilterState>,
         filter_id: u64,
+        max_block_range: u64,
     ) -> Result<Vec<LogResponse>, RpcError> {
         let filter = filter_state
             .filter(filter_id)
             .await
             .ok_or_else(|| invalid_params("filter not found"))?;
-        logs_for_filter(node_client, &filter).await
+        logs_for_filter(node_client, &filter, max_block_range).await
     }
 }
 

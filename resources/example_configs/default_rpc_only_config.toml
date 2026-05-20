@@ -21,6 +21,9 @@ qps_limit = 100
 # Maximum number of bytes to accept in a single request body.
 max_body_bytes = 4_000_000
 
+# Maximum number of blocks an Ethereum log query or subscription catch-up range can scan.
+max_eth_log_block_range = 10_000
+
 # Specifies which origin will be reported as allowed by RPC server.
 #
 # If left empty, CORS will be disabled.

@@ -34,7 +34,8 @@ use warp::{
 
 use super::{
     log_filter::{
-        LogFilter, RawLogFilter, latest_block_height, logs_for_block_height, logs_for_filter,
+        LogFilter, RawLogFilter, ensure_log_block_range_within_limit, latest_block_height,
+        logs_for_block_height, logs_for_filter,
     },
     types::invalid_params,
 };
@@ -55,6 +56,7 @@ pub(crate) fn websocket_route(
     sidecar_event_sender: BroadcastSender<SidecarEvent>,
     allow_unknown_fields: bool,
     origin_policy: WebSocketOriginPolicy,
+    max_eth_log_block_range: u64,
 ) -> BoxedFilter<(reply::Response,)> {
     warp::path::path(api_path)
         .and(warp::path::end())
@@ -71,6 +73,7 @@ pub(crate) fn websocket_route(
                     node_client,
                     sidecar_event_sender,
                     allow_unknown_fields,
+                    max_eth_log_block_range,
                 )
             })
             .into_response()
@@ -142,6 +145,7 @@ async fn handle_websocket(
     node_client: Arc<dyn NodeClient>,
     sidecar_event_sender: BroadcastSender<SidecarEvent>,
     allow_unknown_fields: bool,
+    max_eth_log_block_range: u64,
 ) {
     info!("eth websocket connection opened");
     let (mut websocket_tx, mut websocket_rx) = websocket.split();
@@ -189,6 +193,7 @@ async fn handle_websocket(
                     sidecar_event_sender.clone(),
                     &outbound_tx,
                     &mut subscriptions,
+                    max_eth_log_block_range,
                 )
                 .await;
             }
@@ -218,6 +223,7 @@ async fn handle_subscribe(
     sidecar_event_sender: BroadcastSender<SidecarEvent>,
     outbound_tx: &UnboundedSender<Value>,
     subscriptions: &mut HashMap<String, JoinHandle<()>>,
+    max_block_range: u64,
 ) {
     let request = match serde_json::from_slice::<Value>(body) {
         Ok(request) => request,
@@ -240,6 +246,14 @@ async fn handle_subscribe(
             return;
         }
     };
+    let subscription_start =
+        match prepare_log_subscription_start(node_client.clone(), &filter, max_block_range).await {
+            Ok(subscription_start) => subscription_start,
+            Err(error) => {
+                send_response(outbound_tx, Response::new_failure(id, error));
+                return;
+            }
+        };
 
     let subscription_id = next_subscription_id();
     send_response(
@@ -266,6 +280,8 @@ async fn handle_subscribe(
             subscription_id_for_task,
             sidecar_event_receiver,
             notification_tx,
+            subscription_start,
+            max_block_range,
         )
         .await;
     });
@@ -309,12 +325,49 @@ fn handle_unsubscribe(
     send_response(outbound_tx, Response::new_success(id, json!(existed)));
 }
 
+#[derive(Clone, Copy, Debug)]
+struct LogSubscriptionStart {
+    latest_height: Option<u64>,
+    finite_to_block: Option<u64>,
+    initial_range: Option<(u64, u64)>,
+    next_height: u64,
+}
+
+async fn prepare_log_subscription_start(
+    node_client: Arc<dyn NodeClient>,
+    filter: &LogFilter,
+    max_block_range: u64,
+) -> Result<Option<LogSubscriptionStart>, RpcError> {
+    if filter.block_hash().is_some() {
+        return Ok(None);
+    }
+
+    // Preserve the prior behavior of allowing subscriptions to start even
+    // when the current latest block cannot be read yet. The fallback poll path
+    // will catch up once the node can answer.
+    let latest_height = latest_block_height(node_client).await.ok().flatten();
+    let finite_to_block = filter.finite_to_block_height()?;
+    let (initial_range, next_height) = initial_subscription_range(filter, latest_height)?;
+    if let Some((from_height, to_height)) = initial_range {
+        ensure_log_block_range_within_limit(from_height, to_height, max_block_range)?;
+    }
+
+    Ok(Some(LogSubscriptionStart {
+        latest_height,
+        finite_to_block,
+        initial_range,
+        next_height,
+    }))
+}
+
 async fn poll_log_subscription(
     node_client: Arc<dyn NodeClient>,
     filter: LogFilter,
     subscription_id: String,
     mut sidecar_event_receiver: BroadcastReceiver<SidecarEvent>,
     outbound_tx: UnboundedSender<Value>,
+    subscription_start: Option<LogSubscriptionStart>,
+    max_block_range: u64,
 ) {
     if filter.block_hash().is_some() {
         info!(
@@ -322,7 +375,7 @@ async fn poll_log_subscription(
             filter = ?filter,
             "starting block-hash eth logs subscription"
         );
-        match logs_for_filter_with_retries(node_client, &filter).await {
+        match logs_for_filter_with_retries(node_client, &filter, max_block_range).await {
             Ok(logs) => {
                 info!(
                     subscription_id,
@@ -341,28 +394,17 @@ async fn poll_log_subscription(
         return;
     }
 
-    // The event sidecar publishes `BlockAdded` from the node SSE stream. Use
-    // latest block reads to seed the cursor, recover from missed events, and
-    // keep subscriptions live when the sidecar is run with only RPC enabled.
-    let latest_height = latest_block_height(node_client.clone())
-        .await
-        .ok()
-        .flatten();
-    let finite_to_block = match filter.finite_to_block_height() {
-        Ok(finite_to_block) => finite_to_block,
-        Err(error) => {
-            warn!(?error, "failed to resolve log subscription toBlock");
-            return;
-        }
+    let Some(subscription_start) = subscription_start else {
+        warn!(
+            subscription_id,
+            "missing prepared eth logs subscription start"
+        );
+        return;
     };
-    let (initial_range, mut next_height) = match initial_subscription_range(&filter, latest_height)
-    {
-        Ok(initial) => initial,
-        Err(error) => {
-            warn!(?error, "failed to resolve initial log subscription range");
-            return;
-        }
-    };
+    let latest_height = subscription_start.latest_height;
+    let finite_to_block = subscription_start.finite_to_block;
+    let initial_range = subscription_start.initial_range;
+    let mut next_height = subscription_start.next_height;
     info!(
         subscription_id,
         latest_height,
@@ -381,6 +423,7 @@ async fn poll_log_subscription(
             to_height,
             &subscription_id,
             &outbound_tx,
+            max_block_range,
         )
         .await
         {
@@ -401,6 +444,9 @@ async fn poll_log_subscription(
                     from_height, to_height, "failed to fetch initial log subscription range"
                 );
                 next_height = error.next_height;
+                if error.fatal {
+                    return;
+                }
             }
         }
     }
@@ -446,6 +492,7 @@ async fn poll_log_subscription(
                             to_height,
                             &subscription_id,
                             &outbound_tx,
+                            max_block_range,
                         )
                         .await
                         {
@@ -467,6 +514,9 @@ async fn poll_log_subscription(
                                     from_height, to_height, "failed to fetch logs for new block range"
                                 );
                                 next_height = error.next_height;
+                                if error.fatal {
+                                    return;
+                                }
                             }
                         }
                     }
@@ -508,6 +558,7 @@ async fn poll_log_subscription(
                             to_height,
                             &subscription_id,
                             &outbound_tx,
+                            max_block_range,
                         )
                         .await
                         {
@@ -529,6 +580,9 @@ async fn poll_log_subscription(
                                     from_height, to_height, "failed to catch up lagged log subscription"
                                 );
                                 next_height = error.next_height;
+                                if error.fatal {
+                                    return;
+                                }
                             }
                         }
                     }
@@ -575,6 +629,7 @@ async fn poll_log_subscription(
                     to_height,
                     &subscription_id,
                     &outbound_tx,
+                    max_block_range,
                 )
                 .await
                 {
@@ -596,6 +651,9 @@ async fn poll_log_subscription(
                             from_height, to_height, "failed to poll log subscription latest block"
                         );
                         next_height = error.next_height;
+                        if error.fatal {
+                            return;
+                        }
                     }
                 }
             }
@@ -655,6 +713,7 @@ fn subscription_is_complete(next_height: u64, finite_to_block: Option<u64>) -> b
 struct LogRangeFetchError {
     error: RpcError,
     next_height: u64,
+    fatal: bool,
 }
 
 #[derive(Debug)]
@@ -666,10 +725,11 @@ struct LogRangeFetchOutcome {
 async fn logs_for_filter_with_retries(
     node_client: Arc<dyn NodeClient>,
     filter: &LogFilter,
+    max_block_range: u64,
 ) -> Result<Vec<super::projection::LogResponse>, RpcError> {
     let mut attempts_remaining = LOG_FETCH_RETRY_ATTEMPTS;
     loop {
-        match logs_for_filter(node_client.clone(), filter).await {
+        match logs_for_filter(node_client.clone(), filter, max_block_range).await {
             Ok(logs) => return Ok(logs),
             Err(error) if attempts_remaining > 0 => {
                 attempts_remaining -= 1;
@@ -691,14 +751,30 @@ async fn send_logs_for_block_range_with_retries(
     to_height: u64,
     subscription_id: &str,
     outbound_tx: &UnboundedSender<Value>,
+    max_block_range: u64,
 ) -> Result<LogRangeFetchOutcome, LogRangeFetchError> {
+    if let Err(error) = ensure_log_block_range_within_limit(from_height, to_height, max_block_range)
+    {
+        return Err(LogRangeFetchError {
+            error,
+            next_height: from_height,
+            fatal: true,
+        });
+    }
+
     let mut next_height = from_height;
     let mut emitted_logs = 0usize;
     for height in from_height..=to_height {
         let logs =
             match logs_for_block_height_with_retries(node_client.clone(), filter, height).await {
                 Ok(logs) => logs,
-                Err(error) => return Err(LogRangeFetchError { error, next_height }),
+                Err(error) => {
+                    return Err(LogRangeFetchError {
+                        error,
+                        next_height,
+                        fatal: false,
+                    });
+                }
             };
         let log_count = logs.len();
         if log_count > 0 {

@@ -205,6 +205,7 @@ pub(crate) async fn latest_block_height(
 pub(crate) async fn logs_for_filter(
     node_client: Arc<dyn NodeClient>,
     filter: &LogFilter,
+    max_block_range: u64,
 ) -> Result<Vec<LogResponse>, RpcError> {
     if let Some(block_hash) = filter.block_hash {
         return logs_for_block(
@@ -220,7 +221,26 @@ pub(crate) async fn logs_for_filter(
     };
     let from_height = filter.from_block_height_or_latest(latest_height)?;
     let to_height = filter.to_block_height(latest_height)?;
+    ensure_log_block_range_within_limit(from_height, to_height, max_block_range)?;
     logs_for_block_range(node_client, filter, from_height, to_height).await
+}
+
+pub(crate) fn ensure_log_block_range_within_limit(
+    from_height: u64,
+    to_height: u64,
+    max_block_range: u64,
+) -> Result<(), RpcError> {
+    if from_height > to_height {
+        return Ok(());
+    }
+    let block_count = to_height.saturating_sub(from_height).saturating_add(1);
+    if block_count > max_block_range {
+        return Err(invalid_params(format!(
+            "log block range of {block_count} blocks exceeds configured maximum of \
+            {max_block_range} blocks"
+        )));
+    }
+    Ok(())
 }
 
 pub(crate) async fn logs_for_block_range(
@@ -483,6 +503,20 @@ mod tests {
         assert_eq!(
             err,
             invalid_params("'blockHash' is mutually exclusive with 'fromBlock' and 'toBlock'")
+        );
+    }
+
+    #[test]
+    fn validates_log_block_range_limit() {
+        assert!(ensure_log_block_range_within_limit(0, 9_999, 10_000).is_ok());
+        assert!(ensure_log_block_range_within_limit(10, 9, 10_000).is_ok());
+
+        let err = ensure_log_block_range_within_limit(0, 10_000, 10_000).unwrap_err();
+        assert_eq!(
+            err,
+            invalid_params(
+                "log block range of 10001 blocks exceeds configured maximum of 10000 blocks"
+            )
         );
     }
 

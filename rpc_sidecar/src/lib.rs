@@ -129,6 +129,7 @@ async fn run_rpc(
         config.limits.unwrap_or_default(),
         config.qps_limit,
         config.max_body_bytes,
+        config.max_eth_log_block_range,
         config.cors_origin,
     )
     .await;

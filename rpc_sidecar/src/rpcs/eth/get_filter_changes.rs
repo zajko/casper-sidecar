@@ -6,8 +6,8 @@ use casper_json_rpc::{ConfigLimit, Error as RpcError, Params, RequestHandlersBui
 use super::{
     super::{NodeClient, RpcWithParams},
     log_filter::{
-        EthFilterState, FilterIdParams, filter_id_from_params, latest_block_height,
-        logs_for_block_range, logs_for_filter,
+        EthFilterState, FilterIdParams, ensure_log_block_range_within_limit, filter_id_from_params,
+        latest_block_height, logs_for_block_range, logs_for_filter,
     },
     projection::LogResponse,
     types::{internal_error, invalid_params, parse_positional_params},
@@ -22,6 +22,7 @@ impl GetFilterChanges {
     pub(crate) fn register_as_handler(
         node_client: Arc<dyn NodeClient>,
         filter_state: Arc<EthFilterState>,
+        max_block_range: u64,
         handlers_builder: &mut RequestHandlersBuilder,
         limit: ConfigLimit,
     ) {
@@ -30,7 +31,7 @@ impl GetFilterChanges {
             let filter_state = Arc::clone(&filter_state);
             async move {
                 let filter_id = filter_id_from_params(maybe_params)?;
-                Self::do_handle_request(node_client, filter_state, filter_id).await
+                Self::do_handle_request(node_client, filter_state, filter_id, max_block_range).await
             }
         };
         handlers_builder.register_handler(Self::METHOD, handler, &limit);
@@ -40,6 +41,7 @@ impl GetFilterChanges {
         node_client: Arc<dyn NodeClient>,
         filter_state: Arc<EthFilterState>,
         filter_id: u64,
+        max_block_range: u64,
     ) -> Result<Vec<LogResponse>, RpcError> {
         let stored = filter_state
             .get(filter_id)
@@ -50,7 +52,7 @@ impl GetFilterChanges {
             if stored.block_hash_polled {
                 return Ok(Vec::new());
             }
-            let logs = logs_for_filter(node_client, &stored.filter).await?;
+            let logs = logs_for_filter(node_client, &stored.filter, max_block_range).await?;
             filter_state.mark_block_hash_polled(filter_id).await;
             return Ok(logs);
         }
@@ -66,6 +68,7 @@ impl GetFilterChanges {
         else {
             return Ok(Vec::new());
         };
+        ensure_log_block_range_within_limit(stored.next_block, to_height, max_block_range)?;
         let logs =
             logs_for_block_range(node_client, &stored.filter, stored.next_block, to_height).await?;
         filter_state.set_next_block(filter_id, next_block).await;

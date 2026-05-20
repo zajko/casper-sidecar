@@ -31,6 +31,8 @@ const DEFAULT_MAX_BODY_BYTES: u64 = 2_621_440;
 const DEFAULT_CORS_ORIGIN: String = String::new();
 /// Default enable block prefetch
 const DEFAULT_ENABLE_BLOCK_PREFETCH: bool = false;
+/// Default maximum number of blocks an Ethereum log query can scan.
+const DEFAULT_MAX_ETH_LOG_BLOCK_RANGE: u64 = 10_000;
 
 #[derive(Error, Debug)]
 pub enum FieldParseError {
@@ -90,6 +92,9 @@ pub struct RpcConfig {
     /// reacts to the sses observance of `BlockAdded` sse event. If sse is not set-up, setting this flag to "true" will have no effect.
     #[serde(default = "default_enable_block_prefetch")]
     pub enable_block_prefetch: bool,
+    /// Maximum number of blocks an Ethereum log query can scan in a single request or catch-up range.
+    #[serde(default = "default_max_eth_log_block_range")]
+    pub max_eth_log_block_range: u64,
 }
 
 impl RpcConfig {
@@ -113,6 +118,7 @@ impl RpcConfig {
             default_limit_period: DEFAULT_LIMIT_PERIOD,
             limits: None,
             enable_block_prefetch: DEFAULT_ENABLE_BLOCK_PREFETCH,
+            max_eth_log_block_range: DEFAULT_MAX_ETH_LOG_BLOCK_RANGE,
         }
     }
 }
@@ -250,4 +256,8 @@ pub struct ExponentialBackoffConfig {
 
 fn default_enable_block_prefetch() -> bool {
     DEFAULT_ENABLE_BLOCK_PREFETCH
+}
+
+fn default_max_eth_log_block_range() -> u64 {
+    DEFAULT_MAX_ETH_LOG_BLOCK_RANGE
 }

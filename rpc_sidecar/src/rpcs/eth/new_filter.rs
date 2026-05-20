@@ -7,8 +7,8 @@ use casper_types::evm;
 use super::{
     super::{NodeClient, RpcWithParams},
     log_filter::{
-        EthFilterState, LogFilter, RawLogFilter, StoredFilter, filter_id_result,
-        latest_block_height,
+        EthFilterState, LogFilter, RawLogFilter, StoredFilter, ensure_log_block_range_within_limit,
+        filter_id_result, latest_block_height,
     },
     types::{internal_error, parse_positional_params},
 };
@@ -22,6 +22,7 @@ impl NewFilter {
     pub(crate) fn register_as_handler(
         node_client: Arc<dyn NodeClient>,
         filter_state: Arc<EthFilterState>,
+        max_block_range: u64,
         handlers_builder: &mut RequestHandlersBuilder,
         limit: ConfigLimit,
     ) {
@@ -30,7 +31,7 @@ impl NewFilter {
             let filter_state = Arc::clone(&filter_state);
             async move {
                 let (filter,) = parse_positional_params::<(RawLogFilter,)>(maybe_params)?;
-                Self::do_handle_request(node_client, filter_state, filter).await
+                Self::do_handle_request(node_client, filter_state, filter, max_block_range).await
             }
         };
         handlers_builder.register_handler(Self::METHOD, handler, &limit);
@@ -40,6 +41,7 @@ impl NewFilter {
         node_client: Arc<dyn NodeClient>,
         filter_state: Arc<EthFilterState>,
         filter: RawLogFilter,
+        max_block_range: u64,
     ) -> Result<evm::EthU256, RpcError> {
         let filter = LogFilter::try_from(filter)?;
         let latest_height = if filter.block_hash().is_some() {
@@ -47,12 +49,29 @@ impl NewFilter {
         } else {
             latest_block_height(node_client).await?
         };
+        ensure_initial_filter_range_within_limit(&filter, latest_height, max_block_range)?;
         let next_block = initial_next_block(&filter, latest_height)?;
         let filter_id = filter_state
             .insert(StoredFilter::new(filter, next_block))
             .await;
         Ok(filter_id_result(filter_id))
     }
+}
+
+fn ensure_initial_filter_range_within_limit(
+    filter: &LogFilter,
+    latest_height: Option<u64>,
+    max_block_range: u64,
+) -> Result<(), RpcError> {
+    let Some(latest_height) = latest_height else {
+        return Ok(());
+    };
+    if filter.block_hash().is_some() || !filter.has_block_range_bound() {
+        return Ok(());
+    }
+    let from_height = filter.from_block_height_or_latest(latest_height)?;
+    let to_height = filter.to_block_height(latest_height)?.min(latest_height);
+    ensure_log_block_range_within_limit(from_height, to_height, max_block_range)
 }
 
 fn initial_next_block(filter: &LogFilter, latest_height: Option<u64>) -> Result<u64, RpcError> {
@@ -120,5 +139,13 @@ mod tests {
         let filter = parsed_filter(json!({ "fromBlock": "earliest" }));
 
         assert_eq!(initial_next_block(&filter, Some(12)).unwrap(), 0);
+    }
+
+    #[test]
+    fn bounded_filter_rejects_initial_range_over_limit() {
+        let filter = parsed_filter(json!({ "fromBlock": "earliest" }));
+
+        assert!(ensure_initial_filter_range_within_limit(&filter, Some(12), 10).is_err());
+        assert!(ensure_initial_filter_range_within_limit(&filter, Some(12), 13).is_ok());
     }
 }

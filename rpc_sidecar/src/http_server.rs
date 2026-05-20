@@ -49,6 +49,7 @@ pub async fn run(
     mut limits: HashMap<String, ConfigLimit>,
     qps_limit: NonZeroU32,
     max_body_bytes: u64,
+    max_eth_log_block_range: u64,
     cors_origin: String,
 ) {
     let mut handlers = RequestHandlersBuilder::new();
@@ -100,11 +101,26 @@ pub async fn run(
     register!(EthGetTransactionCount);
     register!(EthSendRawTransaction);
     register!(EthGetTransactionReceipt);
-    register!(EthGetLogs);
+    register_with_context!(EthGetLogs, node.clone(), max_eth_log_block_range);
     register!(EthCall);
-    register_with_context!(EthNewFilter, node.clone(), eth_filter_state.clone());
-    register_with_context!(EthGetFilterChanges, node.clone(), eth_filter_state.clone());
-    register_with_context!(EthGetFilterLogs, node.clone(), eth_filter_state.clone());
+    register_with_context!(
+        EthNewFilter,
+        node.clone(),
+        eth_filter_state.clone(),
+        max_eth_log_block_range
+    );
+    register_with_context!(
+        EthGetFilterChanges,
+        node.clone(),
+        eth_filter_state.clone(),
+        max_eth_log_block_range
+    );
+    register_with_context!(
+        EthGetFilterLogs,
+        node.clone(),
+        eth_filter_state.clone(),
+        max_eth_log_block_range
+    );
     register_with_context!(EthUninstallFilter, eth_filter_state.clone());
 
     let handlers = handlers.build();
@@ -124,6 +140,7 @@ pub async fn run(
         max_body_bytes,
         RPC_API_PATH,
         RPC_API_SERVER_NAME,
+        max_eth_log_block_range,
         cors_header,
     )
     .await;
