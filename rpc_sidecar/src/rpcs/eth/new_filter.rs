@@ -42,19 +42,30 @@ impl NewFilter {
         filter: RawLogFilter,
     ) -> Result<evm::EthU256, RpcError> {
         let filter = LogFilter::try_from(filter)?;
-        let next_block = if filter.block_hash().is_some() {
-            0
+        let latest_height = if filter.block_hash().is_some() {
+            None
         } else {
-            let latest_height = match latest_block_height(node_client).await? {
-                Some(latest_height) => latest_height,
-                None => 0,
-            };
-            filter.from_block_height_or_latest(latest_height)?
+            latest_block_height(node_client).await?
         };
+        let next_block = initial_next_block(&filter, latest_height)?;
         let filter_id = filter_state
             .insert(StoredFilter::new(filter, next_block))
             .await;
         Ok(filter_id_result(filter_id))
+    }
+}
+
+fn initial_next_block(filter: &LogFilter, latest_height: Option<u64>) -> Result<u64, RpcError> {
+    if filter.block_hash().is_some() {
+        return Ok(0);
+    }
+    let Some(latest_height) = latest_height else {
+        return Ok(0);
+    };
+    if filter.has_block_range_bound() {
+        filter.from_block_height_or_latest(latest_height)
+    } else {
+        Ok(latest_height.saturating_add(1))
     }
 }
 
@@ -76,5 +87,38 @@ impl RpcWithParams for NewFilter {
         Err(internal_error(
             "eth_newFilter requires process-local filter state",
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{Value, json};
+
+    use super::*;
+
+    fn parsed_filter(value: Value) -> LogFilter {
+        let raw = serde_json::from_value::<RawLogFilter>(value).unwrap();
+        LogFilter::try_from(raw).unwrap()
+    }
+
+    #[test]
+    fn unbounded_filter_starts_after_latest_block() {
+        let filter = parsed_filter(json!({}));
+
+        assert_eq!(initial_next_block(&filter, Some(12)).unwrap(), 13);
+    }
+
+    #[test]
+    fn unbounded_filter_without_latest_starts_at_zero() {
+        let filter = parsed_filter(json!({}));
+
+        assert_eq!(initial_next_block(&filter, None).unwrap(), 0);
+    }
+
+    #[test]
+    fn bounded_filter_respects_from_block() {
+        let filter = parsed_filter(json!({ "fromBlock": "earliest" }));
+
+        assert_eq!(initial_next_block(&filter, Some(12)).unwrap(), 0);
     }
 }
