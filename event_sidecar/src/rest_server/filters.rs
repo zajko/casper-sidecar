@@ -18,6 +18,7 @@ use warp::{Filter, Rejection, Reply};
 pub enum TransactionTypeIdFilter {
     Deploy,
     Version1,
+    Evm,
 }
 
 impl From<TransactionTypeIdFilter> for TransactionTypeId {
@@ -25,6 +26,7 @@ impl From<TransactionTypeIdFilter> for TransactionTypeId {
         match val {
             TransactionTypeIdFilter::Deploy => TransactionTypeId::Deploy,
             TransactionTypeIdFilter::Version1 => TransactionTypeId::Version1,
+            TransactionTypeIdFilter::Evm => TransactionTypeId::Evm,
         }
     }
 }
@@ -36,6 +38,7 @@ impl FromStr for TransactionTypeIdFilter {
         match s.to_lowercase().as_str() {
             "deploy" => Ok(TransactionTypeIdFilter::Deploy),
             "version1" => Ok(TransactionTypeIdFilter::Version1),
+            "evm" => Ok(TransactionTypeIdFilter::Evm),
             _ => Err(format!("Invalid transaction type id: {s}")),
         }
     }

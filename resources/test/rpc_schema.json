@@ -2438,7 +2438,8 @@
                 "data": "0x",
                 "input": null,
                 "value": null,
-                "gas": null
+                "gas": null,
+                "gasPrice": null
               }
             },
             {
@@ -9955,6 +9956,16 @@
             ]
           },
           "gas": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gasPrice": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/EthU256"
