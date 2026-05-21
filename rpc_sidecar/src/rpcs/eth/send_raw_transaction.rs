@@ -32,6 +32,108 @@ impl SendRawTransactionParams {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use alloy_consensus::{SignableTransaction, TxEip7702, TxEnvelope, crypto::secp256k1};
+    use alloy_eips::{eip2718::Encodable2718, eip2930::AccessList, eip7702::Authorization};
+    use alloy_primitives::{Address as AlloyAddress, B256, Bytes as AlloyBytes, U256 as AlloyU256};
+    use casper_binary_port::{BinaryResponse, BinaryResponseAndRequest, Command};
+    use casper_types::{bytesrepr::Bytes, evm::TransactionKind};
+    use tokio::sync::Mutex;
+
+    use super::*;
+    use crate::ClientError;
+
+    const SIGNING_SECRET: [u8; 32] = [7; 32];
+    const AUTHORIZATION_SECRET: [u8; 32] = [8; 32];
+
+    #[derive(Default)]
+    struct ClientMock {
+        accepted: Mutex<Option<Transaction>>,
+    }
+
+    #[async_trait]
+    impl NodeClient for ClientMock {
+        async fn send_request(
+            &self,
+            req: Command,
+        ) -> Result<BinaryResponseAndRequest, ClientError> {
+            let Command::TryAcceptTransaction { transaction } = req else {
+                panic!("unexpected request: {req:?}");
+            };
+            *self.accepted.lock().await = Some(transaction);
+            Ok(BinaryResponseAndRequest::new(
+                BinaryResponse::new_empty(),
+                Bytes::new(),
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn accepts_eip7702_raw_transaction() {
+        let raw_transaction = signed_eip7702_raw_transaction();
+        let expected = evm::Transaction::from_signed_rlp(
+            raw_transaction.clone(),
+            Timestamp::zero(),
+            DEFAULT_EVM_TX_TTL,
+        )
+        .expect("raw transaction should decode");
+        let node_client = Arc::new(ClientMock::default());
+
+        let hash = SendRawTransaction::do_handle_request(
+            node_client.clone(),
+            SendRawTransactionParams {
+                raw_transaction: HexData::from(raw_transaction),
+            },
+        )
+        .await
+        .expect("raw transaction should be accepted");
+
+        assert_eq!(hash, expected.hash().hash());
+        let accepted = node_client
+            .accepted
+            .lock()
+            .await
+            .take()
+            .expect("transaction should be sent to the node");
+        let Transaction::Evm(accepted) = accepted else {
+            panic!("expected an EVM transaction");
+        };
+        assert_eq!(accepted.kind(), TransactionKind::Eip7702);
+        assert_eq!(accepted.authorization_list(), expected.authorization_list());
+    }
+
+    fn signed_eip7702_raw_transaction() -> Vec<u8> {
+        let authorization = Authorization {
+            chain_id: AlloyU256::from(7),
+            address: AlloyAddress::from([9; 20]),
+            nonce: 4,
+        };
+        let authorization_signature = secp256k1::sign_message(
+            B256::from(AUTHORIZATION_SECRET),
+            authorization.signature_hash(),
+        )
+        .expect("authorization signing should succeed");
+        let tx = TxEip7702 {
+            chain_id: 7,
+            nonce: 3,
+            gas_limit: 70_000,
+            max_fee_per_gas: 2_000_000_000,
+            max_priority_fee_per_gas: 0,
+            to: AlloyAddress::from([4; 20]),
+            value: AlloyU256::from(987u64),
+            access_list: AccessList::default(),
+            authorization_list: vec![authorization.into_signed(authorization_signature)],
+            input: AlloyBytes::from(vec![0xde, 0xad]),
+        };
+        let transaction_signature =
+            secp256k1::sign_message(B256::from(SIGNING_SECRET), tx.signature_hash())
+                .expect("transaction signing should succeed");
+        let envelope: TxEnvelope = tx.into_signed(transaction_signature).into();
+        envelope.encoded_2718()
+    }
+}
+
 impl DocExample for SendRawTransactionParams {
     fn doc_example() -> &'static Self {
         &SEND_RAW_TRANSACTION_PARAMS_EXAMPLE

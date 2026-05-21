@@ -271,6 +271,7 @@ fn receipt_envelope(
         0 => Ok(ReceiptEnvelope::from_typed(TxType::Legacy, receipt)),
         1 => Ok(ReceiptEnvelope::from_typed(TxType::Eip2930, receipt)),
         2 => Ok(ReceiptEnvelope::from_typed(TxType::Eip1559, receipt)),
+        4 => Ok(ReceiptEnvelope::from_typed(TxType::Eip7702, receipt)),
         other => Err(internal_error(format!(
             "unsupported EVM receipt transaction type: {other}"
         ))),
@@ -327,4 +328,26 @@ fn b256_to_evm_hash(hash: B256) -> evm::Hash {
 
 fn bloom_hex(bloom: &Bloom) -> HexData {
     HexData::from(bloom.as_slice())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn receipt_envelope_supports_eip7702_transaction_type() {
+        let envelope = receipt_envelope(4, empty_receipt()).unwrap();
+        assert_eq!(envelope.tx_type(), TxType::Eip7702);
+    }
+
+    fn empty_receipt() -> ReceiptWithBloom<AlloyReceipt> {
+        ReceiptWithBloom {
+            receipt: AlloyReceipt {
+                status: Eip658Value::Eip658(true),
+                cumulative_gas_used: 0,
+                logs: Vec::new(),
+            },
+            logs_bloom: Bloom::default(),
+        }
+    }
 }

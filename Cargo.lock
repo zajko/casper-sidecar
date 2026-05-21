@@ -735,6 +735,7 @@ name = "casper-rpc-sidecar"
 version = "2.0.0"
 dependencies = [
  "alloy-consensus",
+ "alloy-eips",
  "alloy-primitives",
  "anyhow",
  "assert-json-diff",

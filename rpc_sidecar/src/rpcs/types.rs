@@ -40,7 +40,9 @@ pub(crate) struct SpeculativeExecutionResultSchema {
 #[cfg(test)]
 mod tests {
     use casper_binary_port::SpeculativeExecutionResult;
-    use casper_types::testing::TestRng;
+    use casper_types::{
+        BlockHash, Digest, Gas, Transfer, contract_messages::Messages, execution::Effects,
+    };
     use schemars::schema_for;
     use serde_json::json;
 
@@ -48,13 +50,31 @@ mod tests {
 
     #[test]
     pub fn speculative_execution_result_should_validate_against_schema() {
-        let mut test_rng = TestRng::new();
-        let ser = SpeculativeExecutionResult::random(&mut test_rng);
+        let ser = SpeculativeExecutionResult::new(
+            BlockHash::new(Digest::from([0; Digest::LENGTH])),
+            vec![Transfer::example().clone()],
+            Gas::zero(),
+            Gas::zero(),
+            Effects::new(),
+            Messages::new(),
+            None,
+        );
         let schema_struct = schema_for!(SpeculativeExecutionResultSchema);
 
         let schema = json!(schema_struct);
         let instance = serde_json::to_value(&ser).expect("should json-serialize result");
 
-        assert!(jsonschema::is_valid(&schema, &instance));
+        let validator = jsonschema::validator_for(&schema).expect("schema should compile");
+        let errors = validator
+            .iter_errors(&instance)
+            .map(|error| format!("{} at {}", error, error.instance_path))
+            .collect::<Vec<_>>();
+
+        assert!(
+            errors.is_empty(),
+            "instance failed schema validation:\n{}\ninstance:\n{}",
+            errors.join("\n"),
+            serde_json::to_string_pretty(&instance).expect("instance should pretty-print")
+        );
     }
 }
