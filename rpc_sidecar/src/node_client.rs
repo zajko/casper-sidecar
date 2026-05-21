@@ -5,12 +5,12 @@ use casper_binary_port::{
     AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
     BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command, CommandHeader,
     ConsensusValidatorChanges, ContractInformation, DictionaryItemIdentifier,
-    DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, EvmCallRequest,
-    EvmCallResult, GetRequest, GetTrieFullResult, GlobalStateEntityQualifier,
+    DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode,
+    EvmSpeculativeExecutionResult, GetRequest, GetTrieFullResult, GlobalStateEntityQualifier,
     GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
     KeyPrefix, NodeStatus, PackageIdentifier, PayloadEntity, PurseIdentifier, RecordId,
-    ResponseType, RewardResponse, SimulationRequest, SimulationResult, SpeculativeExecutionResult,
-    TransactionWithExecutionInfo, ValueWithProof,
+    ResponseType, RewardResponse, SpeculativeExecutionResult, TransactionWithExecutionInfo,
+    ValueWithProof,
 };
 use casper_types::{
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockWithSignatures,
@@ -18,6 +18,7 @@ use casper_types::{
     StoredValue, Transaction, TransactionHash, Transfer,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::ContractPackage,
+    evm,
     system::auction::DelegatorKind,
 };
 use futures::{Future, SinkExt, StreamExt};
@@ -173,16 +174,16 @@ pub trait NodeClient: Send + Sync {
         parse_response::<SpeculativeExecutionResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
-    async fn evm_call(&self, request: EvmCallRequest) -> Result<EvmCallResult, Error> {
+    async fn evm_call(
+        &self,
+        transaction: evm::Transaction,
+    ) -> Result<EvmSpeculativeExecutionResult, Error> {
         let resp = self
-            .send_request(Command::Simulate {
-                request: SimulationRequest::EvmCall(request),
+            .send_request(Command::TrySpeculativeExec {
+                transaction: Transaction::Evm(transaction),
             })
             .await?;
-        match parse_response::<SimulationResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)? {
-            SimulationResult::EvmCall(result) => Ok(result),
-            SimulationResult::Transaction(_) => Err(Error::UnexpectedSimulationResult),
-        }
+        parse_response::<EvmSpeculativeExecutionResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_block_transfers(&self, hash: BlockHash) -> Result<Option<Vec<Transfer>>, Error> {
@@ -763,8 +764,6 @@ pub enum Error {
     EmptyEnvelope,
     #[error("unexpected payload variant received in the response: {0}")]
     UnexpectedVariantReceived(u8),
-    #[error("unexpected simulation result received for EVM call")]
-    UnexpectedSimulationResult,
     #[error("attempted to use a function that's disabled on the node")]
     FunctionIsDisabled,
     #[error("could not find the provided state root hash")]

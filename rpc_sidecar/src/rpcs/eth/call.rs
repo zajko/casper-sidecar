@@ -1,9 +1,8 @@
 use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
-use casper_binary_port::EvmCallRequest;
 use casper_json_rpc::{Error as RpcError, Params, ReservedErrorCode};
-use casper_types::{U256, bytesrepr::Bytes, evm};
+use casper_types::{TimeDiff, Timestamp, U256, evm};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -24,9 +23,17 @@ static CALL_PARAMS_EXAMPLE: LazyLock<CallParams> = LazyLock::new(|| CallParams {
         input: None,
         value: None,
         gas: None,
+        gas_price: None,
     },
     block: BlockTag::Latest,
 });
+
+const DEFAULT_EVM_CALL_TTL: TimeDiff = TimeDiff::from_seconds(300);
+
+#[derive(Deserialize)]
+struct ChainspecEvmConfig {
+    evm: evm::EvmConfig,
+}
 
 /// Call object accepted by `eth_call`.
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize, JsonSchema)]
@@ -38,6 +45,7 @@ pub(crate) struct CallObject {
     input: Option<HexData>,
     value: Option<evm::EthU256>,
     gas: Option<evm::EthU256>,
+    gas_price: Option<evm::EthU256>,
 }
 
 impl CallObject {
@@ -76,6 +84,13 @@ impl CallObject {
             .map_err(invalid_params)
             .map(|maybe_gas| maybe_gas.unwrap_or(DEFAULT_ETH_CALL_GAS_LIMIT))
     }
+
+    fn gas_price(&self, default_base_fee: u64) -> Result<u128, RpcError> {
+        self.gas_price
+            .map(eth_u256_to_u128)
+            .transpose()
+            .map(|maybe_gas_price| maybe_gas_price.unwrap_or(u128::from(default_base_fee)))
+    }
 }
 
 /// Params for `eth_call`.
@@ -111,6 +126,49 @@ impl From<PositionalParams> for CallParams {
     }
 }
 
+fn eth_u256_to_u128(value: evm::EthU256) -> Result<u128, RpcError> {
+    let value = value.value();
+    if value > U256::from(u128::MAX) {
+        return Err(invalid_params("quantity exceeds u128"));
+    }
+    let mut bytes = [0u8; 32];
+    value.to_big_endian(&mut bytes);
+    Ok(u128::from_be_bytes(
+        bytes[16..]
+            .try_into()
+            .expect("slice should contain exactly sixteen bytes"),
+    ))
+}
+
+async fn read_evm_config(node_client: &dyn NodeClient) -> Result<evm::EvmConfig, RpcError> {
+    let chainspec = node_client
+        .read_chainspec_bytes()
+        .await
+        .map_err(internal_error)?;
+    let chainspec = std::str::from_utf8(chainspec.chainspec_bytes())
+        .map_err(|error| internal_error(format!("invalid chainspec bytes: {error}")))?;
+    let chainspec = toml::from_str::<ChainspecEvmConfig>(chainspec)
+        .map_err(|error| internal_error(format!("invalid chainspec toml: {error}")))?;
+    Ok(chainspec.evm)
+}
+
+fn new_evm_call_transaction(
+    call: &CallObject,
+    evm_config: evm::EvmConfig,
+) -> Result<evm::Transaction, RpcError> {
+    Ok(evm::Transaction::new_unsigned_call(
+        Timestamp::zero(),
+        DEFAULT_EVM_CALL_TTL,
+        evm_config.chain_id,
+        call.from(),
+        call.to(),
+        call.value(),
+        call.input()?,
+        call.gas_limit()?,
+        call.gas_price(evm_config.base_fee)?,
+    ))
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct EthCallError {
@@ -137,29 +195,26 @@ impl RpcWithParams for Call {
         params: CallParams,
     ) -> Result<HexData, RpcError> {
         let call = params.call();
+        let evm_config = read_evm_config(node_client.as_ref()).await?;
+        let transaction = new_evm_call_transaction(call, evm_config)?;
         let result = node_client
-            .evm_call(EvmCallRequest::new(
-                call.from(),
-                call.to(),
-                call.value(),
-                Bytes::from(call.input()?),
-                call.gas_limit()?,
-            ))
+            .evm_call(transaction)
             .await
             .map_err(internal_error)?;
-        if result.status().is_success() {
-            Ok(HexData::from(result.output()))
+        let receipt = result.evm_receipt();
+        if receipt.status.is_success() {
+            Ok(HexData::from(result.evm_output()))
         } else {
             Err(RpcError::new(
                 ReservedErrorCode::InternalError,
                 EthCallError {
-                    message: result
-                        .status()
+                    message: receipt
+                        .status
                         .message()
                         .unwrap_or("EVM call failed")
                         .to_string(),
-                    data: HexData::from(result.output()),
-                    gas_used: evm::EthU256::from(result.gas_used()),
+                    data: HexData::from(result.evm_output()),
+                    gas_used: evm::EthU256::from(receipt.gas_used),
                 },
             ))
         }
@@ -168,100 +223,74 @@ impl RpcWithParams for Call {
 
 #[cfg(test)]
 mod tests {
-    use casper_binary_port::{
-        BinaryResponse, Command, EvmCallResult, SimulationRequest, SimulationResult,
-        SpeculativeExecutionResult,
-    };
-
     use super::*;
-    use crate::rpcs::test_utils::BinaryPortMock;
 
-    #[tokio::test]
-    async fn eth_call_success_uses_binary_port_simulate() {
-        let client = BinaryPortMock::new();
+    const EVM_CHAIN_ID: u64 = 7;
+    const EVM_BASE_FEE: u64 = 1;
+
+    #[test]
+    fn eth_call_builds_unsigned_evm_transaction() {
         let from = evm::Address::new([1; evm::ADDRESS_LENGTH]);
         let to = evm::Address::new([2; evm::ADDRESS_LENGTH]);
         let input = vec![0xde, 0xad];
-        let output = vec![0x12, 0x34];
-        client
-            .when_then(
-                Command::Simulate {
-                    request: SimulationRequest::EvmCall(EvmCallRequest::new(
-                        from,
-                        Some(to),
-                        U256::from(1),
-                        Bytes::from(input.clone()),
-                        1_000,
-                    )),
-                },
-                BinaryResponse::from_value(SimulationResult::EvmCall(EvmCallResult::new(
-                    evm::ReceiptStatus::Success,
-                    Bytes::from(output.clone()),
-                    21,
-                ))),
-            )
-            .await;
 
-        let result = Call::do_handle_request(
-            Arc::new(client),
-            CallParams {
-                call: CallObject {
-                    from: Some(EthAddress::from(from)),
-                    to: Some(EthAddress::from(to)),
-                    data: Some(HexData::from(input)),
-                    input: None,
-                    value: Some(evm::EthU256::from(U256::from(1))),
-                    gas: Some(evm::EthU256::from(1_000u64)),
-                },
-                block: BlockTag::Latest,
+        let transaction = new_evm_call_transaction(
+            &CallObject {
+                from: Some(EthAddress::from(from)),
+                to: Some(EthAddress::from(to)),
+                data: Some(HexData::from(input.clone())),
+                input: None,
+                value: Some(evm::EthU256::from(U256::from(1))),
+                gas: Some(evm::EthU256::from(1_000u64)),
+                gas_price: None,
             },
+            evm_config(),
         )
-        .await
-        .expect("eth_call should succeed");
+        .expect("transaction should build");
 
-        assert_eq!(result, HexData::from(output));
+        assert!(transaction.is_unsigned_call());
+        assert!(transaction.approvals().is_empty());
+        assert_eq!(transaction.chain_id(), Some(EVM_CHAIN_ID));
+        assert_eq!(transaction.from(), from);
+        assert_eq!(transaction.to(), Some(to));
+        assert_eq!(transaction.value(), U256::from(1));
+        assert_eq!(transaction.input(), input.as_slice());
+        assert_eq!(transaction.gas_limit(), 1_000);
+        assert_eq!(transaction.gas_price(), Some(u128::from(EVM_BASE_FEE)));
     }
 
-    #[tokio::test]
-    async fn eth_call_rejects_non_evm_simulation_result() {
-        let client = BinaryPortMock::new();
-        let from = evm::Address::new([1; evm::ADDRESS_LENGTH]);
-        client
-            .when_then(
-                Command::Simulate {
-                    request: SimulationRequest::EvmCall(EvmCallRequest::new(
-                        from,
-                        None,
-                        U256::zero(),
-                        Bytes::new(),
-                        DEFAULT_ETH_CALL_GAS_LIMIT,
-                    )),
-                },
-                BinaryResponse::from_value(SimulationResult::Transaction(
-                    SpeculativeExecutionResult::example().clone(),
-                )),
-            )
-            .await;
+    #[test]
+    fn eth_call_uses_explicit_gas_price() {
+        let gas_price = u128::from(EVM_BASE_FEE) + 1;
 
-        let result = Call::do_handle_request(
-            Arc::new(client),
-            CallParams {
-                call: CallObject {
-                    from: Some(EthAddress::from(from)),
-                    to: None,
-                    data: None,
-                    input: None,
-                    value: None,
-                    gas: None,
-                },
-                block: BlockTag::Latest,
+        let transaction = new_evm_call_transaction(
+            &CallObject {
+                gas_price: Some(evm::EthU256::from(gas_price)),
+                ..CallObject::default()
             },
+            evm_config(),
         )
-        .await;
+        .expect("transaction should build");
+
+        assert_eq!(transaction.gas_price(), Some(gas_price));
+    }
+
+    #[test]
+    fn eth_u256_to_u128_rejects_overflow() {
+        let result = eth_u256_to_u128(evm::EthU256::from(U256::from(u128::MAX) + U256::one()));
 
         assert!(matches!(
             result,
-            Err(error) if error.code() == ReservedErrorCode::InternalError as i64
+            Err(error) if error.code() == ReservedErrorCode::InvalidParams as i64
         ));
+    }
+
+    fn evm_config() -> evm::EvmConfig {
+        evm::EvmConfig {
+            enabled: true,
+            chain_id: EVM_CHAIN_ID,
+            base_fee: EVM_BASE_FEE,
+            ..Default::default()
+        }
     }
 }
