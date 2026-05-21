@@ -20,7 +20,7 @@ use tokio::{
         mpsc::{self, UnboundedSender},
     },
     task::JoinHandle,
-    time::{MissedTickBehavior, interval, sleep},
+    time::sleep,
 };
 use tracing::{debug, info, warn};
 use warp::{
@@ -45,7 +45,6 @@ const LOGS_SUBSCRIPTION: &str = "logs";
 const LOG_FETCH_RETRY_ATTEMPTS: usize = 10;
 const LOG_FETCH_RETRY_DELAY: Duration = Duration::from_secs(1);
 const LOG_BACKFILL_BLOCK_DELAY: Duration = Duration::from_millis(25);
-const LOG_SUBSCRIPTION_FALLBACK_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 static NEXT_SUBSCRIPTION_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -274,7 +273,7 @@ async fn handle_subscribe(
         "created eth logs subscription"
     );
     let handle = tokio::spawn(async move {
-        poll_log_subscription(
+        run_log_subscription(
             subscription_node_client,
             subscription_filter,
             subscription_id_for_task,
@@ -342,10 +341,7 @@ async fn prepare_log_subscription_start(
         return Ok(None);
     }
 
-    // Preserve the prior behavior of allowing subscriptions to start even
-    // when the current latest block cannot be read yet. The fallback poll path
-    // will catch up once the node can answer.
-    let latest_height = latest_block_height(node_client).await.ok().flatten();
+    let latest_height = latest_block_height(node_client).await?;
     let finite_to_block = filter.finite_to_block_height()?;
     let (initial_range, next_height) = initial_subscription_range(filter, latest_height)?;
     if let Some((from_height, to_height)) = initial_range {
@@ -360,7 +356,7 @@ async fn prepare_log_subscription_start(
     }))
 }
 
-async fn poll_log_subscription(
+async fn run_log_subscription(
     node_client: Arc<dyn NodeClient>,
     filter: LogFilter,
     subscription_id: String,
@@ -458,9 +454,6 @@ async fn poll_log_subscription(
         );
         return;
     }
-
-    let mut fallback_poll = interval(LOG_SUBSCRIPTION_FALLBACK_POLL_INTERVAL);
-    fallback_poll.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     loop {
         tokio::select! {
@@ -592,68 +585,6 @@ async fn poll_log_subscription(
                             "eth logs subscription sidecar event channel closed"
                         );
                         break;
-                    }
-                }
-            }
-            _ = fallback_poll.tick() => {
-                let Ok(Some(latest_height)) = latest_block_height(node_client.clone()).await else {
-                    warn!(
-                        subscription_id,
-                        next_height,
-                        "eth logs subscription fallback poll could not read latest block height"
-                    );
-                    continue;
-                };
-                info!(
-                    subscription_id,
-                    latest_height,
-                    next_height,
-                    "eth logs subscription fallback poll"
-                );
-                let Some((from_height, to_height, next_after_event)) =
-                    block_range_after_event(next_height, latest_height, finite_to_block)
-                else {
-                    debug!(
-                        subscription_id,
-                        latest_height,
-                        next_height,
-                        finite_to_block,
-                        "eth logs subscription fallback poll found no new range"
-                    );
-                    continue;
-                };
-                match send_logs_for_block_range_with_retries(
-                    node_client.clone(),
-                    &filter,
-                    from_height,
-                    to_height,
-                    &subscription_id,
-                    &outbound_tx,
-                    max_block_range,
-                )
-                .await
-                {
-                    Ok(outcome) => {
-                        debug_assert_eq!(outcome.next_height, next_after_event);
-                        info!(
-                            subscription_id,
-                            from_height,
-                            to_height,
-                            emitted_logs = outcome.emitted_logs,
-                            next_height = outcome.next_height,
-                            "processed eth logs subscription fallback poll range"
-                        );
-                        next_height = outcome.next_height;
-                    }
-                    Err(error) => {
-                        warn!(
-                            error = ?error.error,
-                            from_height, to_height, "failed to poll log subscription latest block"
-                        );
-                        next_height = error.next_height;
-                        if error.fatal {
-                            return;
-                        }
                     }
                 }
             }
