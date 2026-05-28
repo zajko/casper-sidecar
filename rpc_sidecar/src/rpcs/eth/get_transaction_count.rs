@@ -2,12 +2,13 @@ use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use casper_json_rpc::{Error as RpcError, Params};
-use casper_types::{Key, StoredValue, evm};
+use casper_types::{EvmAddr, Key, StoredValue, evm};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
     super::{NodeClient, RpcWithParams},
+    eth_u256::EthU256,
     types::{BlockTag, EthAddress, internal_error, parse_positional_params},
 };
 use crate::rpcs::docs::DocExample;
@@ -58,7 +59,7 @@ pub struct GetTransactionCount;
 impl RpcWithParams for GetTransactionCount {
     const METHOD: &'static str = "eth_getTransactionCount";
     type RequestParams = GetTransactionCountParams;
-    type ResponseResult = evm::EthU256;
+    type ResponseResult = EthU256;
 
     fn try_parse_params(maybe_params: Option<Params>) -> Result<Self::RequestParams, RpcError> {
         parse_positional_params::<PositionalParams>(maybe_params).map(Into::into)
@@ -67,10 +68,10 @@ impl RpcWithParams for GetTransactionCount {
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
         params: GetTransactionCountParams,
-    ) -> Result<evm::EthU256, RpcError> {
+    ) -> Result<EthU256, RpcError> {
         let address = params.address();
         let maybe_value = node_client
-            .query_global_state(None, Key::Evm(evm::EvmAddr::Nonce(address)), vec![])
+            .query_global_state(None, Key::Evm(EvmAddr::Nonce(address)), vec![])
             .await
             .map_err(internal_error)?;
         let nonce = match maybe_value.map(|value| value.into_inner().0) {
@@ -85,7 +86,7 @@ impl RpcWithParams for GetTransactionCount {
             }
             None => 0,
         };
-        Ok(evm::EthU256::from(nonce))
+        Ok(EthU256::from(nonce))
     }
 }
 
@@ -106,7 +107,7 @@ mod tests {
         let request = GlobalStateRequest::new(
             None,
             GlobalStateEntityQualifier::Item {
-                base_key: Key::Evm(evm::EvmAddr::Nonce(address)),
+                base_key: Key::Evm(EvmAddr::Nonce(address)),
                 path: Vec::new(),
             },
         );
@@ -130,6 +131,6 @@ mod tests {
         .await
         .expect("nonce lookup should succeed");
 
-        assert_eq!(result, evm::EthU256::from(12u64));
+        assert_eq!(result, EthU256::from(12u64));
     }
 }

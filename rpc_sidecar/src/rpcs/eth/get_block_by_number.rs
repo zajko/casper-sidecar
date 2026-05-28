@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     super::{NodeClient, RpcWithParams},
+    eth_u256::EthU256,
     projection::project_block,
     types::{
         BlockNumberParam, BlockTag, DEFAULT_ETH_CALL_GAS_LIMIT, EthAddress, HexData,
@@ -63,7 +64,7 @@ impl From<PositionalParams> for GetBlockByNumberParams {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BlockResponse {
-    number: evm::EthU256,
+    number: EthU256,
     hash: evm::Hash,
     parent_hash: evm::Hash,
     nonce: Option<HexData>,
@@ -74,16 +75,16 @@ pub(crate) struct BlockResponse {
     state_root: evm::Hash,
     receipts_root: evm::Hash,
     miner: EthAddress,
-    difficulty: evm::EthU256,
-    total_difficulty: evm::EthU256,
+    difficulty: EthU256,
+    total_difficulty: EthU256,
     extra_data: HexData,
-    size: evm::EthU256,
-    gas_limit: evm::EthU256,
-    gas_used: evm::EthU256,
-    timestamp: evm::EthU256,
+    size: EthU256,
+    gas_limit: EthU256,
+    gas_used: EthU256,
+    timestamp: EthU256,
     transactions: Vec<evm::Hash>,
     uncles: Vec<evm::Hash>,
-    base_fee_per_gas: evm::EthU256,
+    base_fee_per_gas: EthU256,
 }
 
 impl DocExample for Option<BlockResponse> {
@@ -131,16 +132,16 @@ impl RpcWithParams for GetBlockByNumber {
             state_root: block.state_root,
             receipts_root: block.receipts_root,
             miner: EthAddress::from(evm::Address::ZERO),
-            difficulty: evm::EthU256::from(0u8),
-            total_difficulty: evm::EthU256::from(0u8),
+            difficulty: EthU256::from(0u8),
+            total_difficulty: EthU256::from(0u8),
             extra_data: HexData::from(Vec::new()),
-            size: evm::EthU256::from(0u8),
-            gas_limit: evm::EthU256::from(DEFAULT_ETH_CALL_GAS_LIMIT),
+            size: EthU256::from(0u8),
+            gas_limit: EthU256::from(DEFAULT_ETH_CALL_GAS_LIMIT),
             gas_used: block.gas_used,
             timestamp: block.timestamp,
             transactions: block.transactions,
             uncles: Vec::new(),
-            base_fee_per_gas: evm::EthU256::from(0u8),
+            base_fee_per_gas: EthU256::from(0u8),
         }))
     }
 }

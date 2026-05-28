@@ -94,6 +94,7 @@ impl LegacySseData {
             SseData::TransactionProcessed {
                 transaction_hash,
                 initiator_addr,
+                evm_initiator_addr: _,
                 timestamp,
                 ttl,
                 block_hash,
@@ -101,7 +102,7 @@ impl LegacySseData {
                 messages: _,
             } => maybe_translate_transaction_processed(
                 transaction_hash,
-                initiator_addr,
+                initiator_addr.as_deref(),
                 timestamp,
                 ttl,
                 block_hash,
@@ -146,7 +147,7 @@ fn maybe_translate_deploy_expired(transaction_hash: &TransactionHash) -> Option<
 
 fn maybe_translate_transaction_processed(
     transaction_hash: &TransactionHash,
-    initiator_addr: &InitiatorAddr,
+    initiator_addr: Option<&InitiatorAddr>,
     timestamp: &Timestamp,
     ttl: &TimeDiff,
     block_hash: &BlockHash,
@@ -154,10 +155,10 @@ fn maybe_translate_transaction_processed(
 ) -> Option<LegacySseData> {
     match transaction_hash {
         TransactionHash::Deploy(deploy_hash) => {
+            let initiator_addr = initiator_addr?;
             let account = match initiator_addr {
                 InitiatorAddr::PublicKey(public_key) => public_key,
                 InitiatorAddr::AccountHash(_) => return None, //This shouldn't happen since we already are in TransactionHash::Deploy
-                InitiatorAddr::EvmAddress(_) => return None,
             };
             let execution_result = match execution_result {
                 ExecutionResult::V1(result) => result.clone(),

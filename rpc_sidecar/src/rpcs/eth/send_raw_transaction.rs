@@ -2,7 +2,7 @@ use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use casper_json_rpc::{Error as RpcError, Params};
-use casper_types::{TimeDiff, Timestamp, Transaction, evm};
+use casper_types::{EvmTransaction, TimeDiff, Timestamp, Transaction, evm};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -38,7 +38,7 @@ mod tests {
     use alloy_eips::{eip2718::Encodable2718, eip2930::AccessList, eip7702::Authorization};
     use alloy_primitives::{Address as AlloyAddress, B256, Bytes as AlloyBytes, U256 as AlloyU256};
     use casper_binary_port::{BinaryResponse, BinaryResponseAndRequest, Command};
-    use casper_types::{bytesrepr::Bytes, evm::TransactionKind};
+    use casper_types::{EvmTransactionKind, bytesrepr::Bytes};
     use tokio::sync::Mutex;
 
     use super::*;
@@ -72,7 +72,7 @@ mod tests {
     #[tokio::test]
     async fn accepts_eip7702_raw_transaction() {
         let raw_transaction = signed_eip7702_raw_transaction();
-        let expected = evm::Transaction::from_signed_rlp(
+        let expected = EvmTransaction::from_signed_rlp(
             raw_transaction.clone(),
             Timestamp::zero(),
             DEFAULT_EVM_TX_TTL,
@@ -99,7 +99,7 @@ mod tests {
         let Transaction::Evm(accepted) = accepted else {
             panic!("expected an EVM transaction");
         };
-        assert_eq!(accepted.kind(), TransactionKind::Eip7702);
+        assert_eq!(accepted.kind(), EvmTransactionKind::Eip7702);
         assert_eq!(accepted.authorization_list(), expected.authorization_list());
     }
 
@@ -158,7 +158,7 @@ impl RpcWithParams for SendRawTransaction {
         node_client: Arc<dyn NodeClient>,
         params: SendRawTransactionParams,
     ) -> Result<evm::Hash, RpcError> {
-        let evm_transaction = evm::Transaction::from_signed_rlp(
+        let evm_transaction = EvmTransaction::from_signed_rlp(
             params.raw_transaction(),
             Timestamp::now(),
             DEFAULT_EVM_TX_TTL,

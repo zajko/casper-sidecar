@@ -15,6 +15,7 @@ use tokio::sync::Mutex;
 
 use super::{
     super::NodeClient,
+    eth_u256::EthU256,
     projection::{LogResponse, evm_hash_to_block_hash, project_block},
     types::{BlockNumberParam, EthAddress, invalid_params, parse_positional_params},
 };
@@ -30,7 +31,7 @@ static GET_LOGS_PARAMS_EXAMPLE: RawLogFilter = RawLogFilter {
 static LOGS_EXAMPLE: Vec<LogResponse> = Vec::new();
 static BOOL_EXAMPLE: bool = true;
 static FILTER_ID_PARAMS_EXAMPLE: FilterIdParams = FilterIdParams {
-    filter_id: evm::EthU256::ZERO,
+    filter_id: EthU256::ZERO,
 };
 const FILTER_IDLE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const MAX_INSTALLED_FILTERS: usize = 1024;
@@ -68,7 +69,7 @@ pub(crate) struct RawLogFilter {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct FilterIdParams {
-    pub(crate) filter_id: evm::EthU256,
+    pub(crate) filter_id: EthU256,
 }
 
 impl DocExample for RawLogFilter {
@@ -409,12 +410,12 @@ fn prune_to_capacity(filters: &mut HashMap<u64, StoredFilter>) {
 }
 
 pub(super) fn filter_id_from_params(maybe_params: Option<Params>) -> Result<u64, RpcError> {
-    let (filter_id,) = parse_positional_params::<(evm::EthU256,)>(maybe_params)?;
+    let (filter_id,) = parse_positional_params::<(EthU256,)>(maybe_params)?;
     filter_id.as_u64().map_err(invalid_params)
 }
 
-pub(super) fn filter_id_result(filter_id: u64) -> evm::EthU256 {
-    evm::EthU256::from(filter_id)
+pub(super) fn filter_id_result(filter_id: u64) -> EthU256 {
+    EthU256::from(filter_id)
 }
 
 #[cfg(test)]
@@ -442,10 +443,10 @@ mod tests {
             topics,
             data: HexData::default(),
             block_hash: hash(9),
-            block_number: evm::EthU256::from(1u8),
+            block_number: EthU256::from(1u8),
             transaction_hash: hash(8),
-            transaction_index: evm::EthU256::from(0u8),
-            log_index: evm::EthU256::from(0u8),
+            transaction_index: EthU256::from(0u8),
+            log_index: EthU256::from(0u8),
             removed: false,
         }
     }

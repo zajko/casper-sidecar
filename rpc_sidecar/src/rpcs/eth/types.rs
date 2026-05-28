@@ -6,16 +6,17 @@ use schemars::{JsonSchema, r#gen::SchemaGenerator, schema::Schema};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
+use super::eth_u256::EthU256;
 use crate::rpcs::docs::DocExample;
 
 pub(super) const DEFAULT_ETH_CALL_GAS_LIMIT: u64 = 30_000_000;
 
-static ETH_U256_EXAMPLE: LazyLock<evm::EthU256> = LazyLock::new(|| evm::EthU256::ZERO);
+static ETH_U256_EXAMPLE: LazyLock<EthU256> = LazyLock::new(|| EthU256::ZERO);
 static ETH_ADDRESS_EXAMPLE: LazyLock<EthAddress> = LazyLock::new(|| EthAddress(evm::Address::ZERO));
 static EVM_HASH_EXAMPLE: LazyLock<evm::Hash> = LazyLock::new(|| evm::Hash::ZERO);
 static HEX_DATA_EXAMPLE: LazyLock<HexData> = LazyLock::new(|| HexData(Vec::new()));
 
-impl DocExample for evm::EthU256 {
+impl DocExample for EthU256 {
     fn doc_example() -> &'static Self {
         &ETH_U256_EXAMPLE
     }
@@ -156,7 +157,7 @@ pub(crate) enum BlockNumberParam {
     /// Latest block known by the node.
     Tag(BlockTag),
     /// Concrete block height.
-    Height(evm::EthU256),
+    Height(EthU256),
 }
 
 impl BlockNumberParam {

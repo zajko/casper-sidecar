@@ -4000,7 +4000,7 @@
             ],
             "properties": {
               "Evm": {
-                "$ref": "#/components/schemas/Transaction2"
+                "$ref": "#/components/schemas/EvmTransaction"
               }
             },
             "additionalProperties": false
@@ -4101,28 +4101,11 @@
               }
             },
             "additionalProperties": false
-          },
-          {
-            "description": "The EVM-native address recovered from the signed Ethereum transaction.",
-            "type": "object",
-            "required": [
-              "EvmAddress"
-            ],
-            "properties": {
-              "EvmAddress": {
-                "$ref": "#/components/schemas/Address"
-              }
-            },
-            "additionalProperties": false
           }
         ]
       },
       "AccountHash": {
         "description": "Account hash as a formatted string.",
-        "type": "string"
-      },
-      "Address": {
-        "description": "A 20-byte Ethereum account or contract address encoded as hexadecimal.",
         "type": "string"
       },
       "PricingMode": {
@@ -4226,7 +4209,7 @@
           }
         ]
       },
-      "Transaction2": {
+      "EvmTransaction": {
         "description": "An unsigned Ethereum transaction payload plus one Ethereum-style Casper approval.",
         "type": "object",
         "required": [
@@ -4257,7 +4240,7 @@
             "$ref": "#/components/schemas/Address"
           },
           "kind": {
-            "$ref": "#/components/schemas/TransactionKind"
+            "$ref": "#/components/schemas/EvmTransactionKind"
           },
           "to": {
             "anyOf": [
@@ -4342,7 +4325,11 @@
           }
         ]
       },
-      "TransactionKind": {
+      "Address": {
+        "description": "A 20-byte Ethereum account or contract address encoded as hexadecimal.",
+        "type": "string"
+      },
+      "EvmTransactionKind": {
         "description": "The supported Ethereum transaction envelope kinds.",
         "oneOf": [
           {
@@ -7548,7 +7535,7 @@
             ]
           },
           {
-            "description": "Prague-compatible EVM bytecode.\n\nThis variant records bytecode that is valid for the Prague EVM rules. When support for a future bytecode-affecting EVM spec such as Osaka is officially added, introduce a new `Evm<Spec>` variant instead of changing the meaning of this one.",
+            "description": "Prague-compatible EVM bytecode.\n\nThis variant records bytecode that is valid for the Prague EVM rules. When support for a future bytecode-affecting EVM spec is added, introduce a new `Evm<Spec>` variant instead of changing the meaning of this one.",
             "type": "string",
             "enum": [
               "EvmPrague"
@@ -7843,7 +7830,7 @@
             "description": "Who initiated this EVM transaction.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/InitiatorAddr"
+                "$ref": "#/components/schemas/Address"
               }
             ]
           },

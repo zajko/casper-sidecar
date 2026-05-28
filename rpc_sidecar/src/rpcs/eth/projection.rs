@@ -9,7 +9,7 @@ use alloy_primitives::{
 };
 use casper_json_rpc::Error as RpcError;
 use casper_types::{
-    BlockHash, BlockIdentifier, Digest, Transaction, TransactionHash, evm,
+    BlockHash, BlockIdentifier, Digest, EvmTransactionHash, Transaction, TransactionHash, evm,
     execution::ExecutionResult,
 };
 use schemars::JsonSchema;
@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     super::NodeClient,
+    eth_u256::EthU256,
     types::{EthAddress, HexData, block_hash_to_evm_hash, internal_error},
 };
 
@@ -28,42 +29,42 @@ pub(crate) struct LogResponse {
     pub(crate) topics: Vec<evm::Topic>,
     pub(crate) data: HexData,
     pub(crate) block_hash: evm::Hash,
-    pub(crate) block_number: evm::EthU256,
+    pub(crate) block_number: EthU256,
     pub(crate) transaction_hash: evm::Hash,
-    pub(crate) transaction_index: evm::EthU256,
-    pub(crate) log_index: evm::EthU256,
+    pub(crate) transaction_index: EthU256,
+    pub(crate) log_index: EthU256,
     pub(crate) removed: bool,
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct ProjectedReceipt {
-    pub(crate) transaction_type: evm::EthU256,
+    pub(crate) transaction_type: EthU256,
     pub(crate) transaction_hash: evm::Hash,
     pub(crate) block_hash: evm::Hash,
-    pub(crate) block_number: evm::EthU256,
+    pub(crate) block_number: EthU256,
     pub(crate) from: EthAddress,
     pub(crate) to: Option<EthAddress>,
     pub(crate) contract_address: Option<EthAddress>,
-    pub(crate) status: evm::EthU256,
-    pub(crate) gas_used: evm::EthU256,
-    pub(crate) effective_gas_price: evm::EthU256,
+    pub(crate) status: EthU256,
+    pub(crate) gas_used: EthU256,
+    pub(crate) effective_gas_price: EthU256,
     pub(crate) logs: Vec<LogResponse>,
     pub(crate) logs_bloom: HexData,
-    pub(crate) transaction_index: evm::EthU256,
-    pub(crate) cumulative_gas_used: evm::EthU256,
+    pub(crate) transaction_index: EthU256,
+    pub(crate) cumulative_gas_used: EthU256,
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct ProjectedBlock {
-    pub(crate) number: evm::EthU256,
+    pub(crate) number: EthU256,
     pub(crate) hash: evm::Hash,
     pub(crate) parent_hash: evm::Hash,
     pub(crate) transactions_root: evm::Hash,
     pub(crate) state_root: evm::Hash,
     pub(crate) receipts_root: evm::Hash,
     pub(crate) logs_bloom: HexData,
-    pub(crate) gas_used: evm::EthU256,
-    pub(crate) timestamp: evm::EthU256,
+    pub(crate) gas_used: EthU256,
+    pub(crate) timestamp: EthU256,
     pub(crate) transactions: Vec<evm::Hash>,
     pub(crate) receipts: Vec<ProjectedReceipt>,
 }
@@ -84,7 +85,7 @@ pub(crate) async fn project_transaction_receipt(
     node_client: Arc<dyn NodeClient>,
     hash: evm::Hash,
 ) -> Result<Option<(evm::Hash, ProjectedReceipt)>, RpcError> {
-    let transaction_hash = TransactionHash::from(evm::TransactionHash::from_raw(hash.value()));
+    let transaction_hash = TransactionHash::from(EvmTransactionHash::from_raw(hash.value()));
     let Some(transaction_with_info) = node_client
         .read_transaction_with_execution_info(transaction_hash, true)
         .await
@@ -228,20 +229,20 @@ pub(crate) async fn project_block(
 
         transactions.push(transaction_hash);
         receipts.push(ProjectedReceipt {
-            transaction_type: evm::EthU256::from(evm_transaction.kind().type_id()),
+            transaction_type: EthU256::from(evm_transaction.kind().type_id()),
             transaction_hash,
             block_hash,
-            block_number: evm::EthU256::from(block_number),
+            block_number: EthU256::from(block_number),
             from: EthAddress::from(evm_transaction.from()),
             to: evm_transaction.to().map(EthAddress::from),
             contract_address: receipt.contract_address.map(EthAddress::from),
-            status: evm::EthU256::from(receipt.status.eth_status()),
-            gas_used: evm::EthU256::from(receipt.gas_used),
-            effective_gas_price: evm::EthU256::from(receipt.effective_gas_price),
+            status: EthU256::from(receipt.status.eth_status()),
+            gas_used: EthU256::from(receipt.gas_used),
+            effective_gas_price: EthU256::from(receipt.effective_gas_price),
             logs,
             logs_bloom: bloom_hex(&receipt_bloom),
-            transaction_index: evm::EthU256::from(transaction_index),
-            cumulative_gas_used: evm::EthU256::from(cumulative_gas_used),
+            transaction_index: EthU256::from(transaction_index),
+            cumulative_gas_used: EthU256::from(cumulative_gas_used),
         });
     }
 
@@ -249,15 +250,15 @@ pub(crate) async fn project_block(
     let block_bloom = alloy_primitives::logs_bloom(&block_alloy_logs);
 
     Ok(Some(ProjectedBlock {
-        number: evm::EthU256::from(block_number),
+        number: EthU256::from(block_number),
         hash: block_hash,
         parent_hash: block_hash_to_evm_hash(block.parent_hash()),
         transactions_root: digest_to_evm_hash(block.body_hash()),
         state_root: digest_to_evm_hash(block.state_root_hash()),
         receipts_root: b256_to_evm_hash(receipts_root),
         logs_bloom: bloom_hex(&block_bloom),
-        gas_used: evm::EthU256::from(cumulative_gas_used),
-        timestamp: evm::EthU256::from(block.timestamp().millis() / 1_000),
+        gas_used: EthU256::from(cumulative_gas_used),
+        timestamp: EthU256::from(block.timestamp().millis() / 1_000),
         transactions,
         receipts,
     }))
@@ -291,10 +292,10 @@ fn receipt_log_response(
         topics: log.topics.clone(),
         data: HexData::from(log.data.as_ref()),
         block_hash: block_hash_to_evm_hash(block_hash),
-        block_number: evm::EthU256::from(block_number),
+        block_number: EthU256::from(block_number),
         transaction_hash,
-        transaction_index: evm::EthU256::from(transaction_index),
-        log_index: evm::EthU256::from(log_index),
+        transaction_index: EthU256::from(transaction_index),
+        log_index: EthU256::from(log_index),
         removed: false,
     }
 }

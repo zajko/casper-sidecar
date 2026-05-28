@@ -356,6 +356,7 @@ async fn handle_single_event<EHS: EventHandlingService + Send + Sync>(
         SseData::TransactionProcessed {
             transaction_hash,
             initiator_addr,
+            evm_initiator_addr,
             timestamp,
             ttl,
             block_hash,
@@ -365,6 +366,7 @@ async fn handle_single_event<EHS: EventHandlingService + Send + Sync>(
             let transaction_processed = TransactionProcessed::new(
                 transaction_hash.clone(),
                 initiator_addr.clone(),
+                evm_initiator_addr.clone(),
                 *timestamp,
                 *ttl,
                 block_hash.clone(),

@@ -2,7 +2,7 @@
 use casper_types::ChainNameDigest;
 use casper_types::{
     AsymmetricType, Block, BlockHash, EraId, InitiatorAddr, ProtocolVersion, PublicKey, TimeDiff,
-    Timestamp, Transaction, TransactionHash, contract_messages::Messages,
+    Timestamp, Transaction, TransactionHash, contract_messages::Messages, evm,
     execution::ExecutionResult,
 };
 use casper_types::{FinalitySignature as FinSig, Signature};
@@ -143,7 +143,9 @@ pub struct TransactionProcessed {
     #[schema(value_type = Object)]
     transaction_hash: Box<TransactionHash>,
     #[schema(value_type = String)]
-    initiator_addr: Box<InitiatorAddr>,
+    initiator_addr: Option<Box<InitiatorAddr>>,
+    #[schema(value_type = String)]
+    evm_initiator_addr: Option<Box<evm::Address>>,
     #[schema(value_type = u64)]
     timestamp: Timestamp,
     #[schema(value_type = u64)]
@@ -191,10 +193,16 @@ impl TransactionProcessed {
             Transaction::V1(transaction) => transaction.timestamp(),
             Transaction::Evm(transaction) => transaction.timestamp(),
         };
-        let initiator_addr = Box::new(transaction.initiator_addr());
+        let (initiator_addr, evm_initiator_addr) = match &transaction {
+            Transaction::Deploy(_) | Transaction::V1(_) => {
+                (transaction.initiator_addr().map(Box::new), None)
+            }
+            Transaction::Evm(transaction) => (None, Some(Box::new(transaction.from()))),
+        };
         Self {
             transaction_hash: Box::new(with_transaction_hash.unwrap_or(transaction.hash())),
             initiator_addr,
+            evm_initiator_addr,
             timestamp,
             ttl,
             block_hash: Box::new(BlockHash::random(rng)),

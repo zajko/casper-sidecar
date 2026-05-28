@@ -5,6 +5,7 @@ use casper_json_rpc::{ConfigLimit, Error as RpcError, Params, RequestHandlersBui
 
 use super::{
     super::{NodeClient, RpcWithParams},
+    eth_u256::EthU256,
     log_filter::{
         EthFilterState, FilterIdParams, ensure_log_block_range_within_limit, filter_id_from_params,
         latest_block_height, logs_for_block_range, logs_for_filter,
@@ -91,7 +92,7 @@ impl RpcWithParams for GetFilterChanges {
     type ResponseResult = Vec<LogResponse>;
 
     fn try_parse_params(maybe_params: Option<Params>) -> Result<Self::RequestParams, RpcError> {
-        let (filter_id,) = parse_positional_params::<(casper_types::evm::EthU256,)>(maybe_params)?;
+        let (filter_id,) = parse_positional_params::<(EthU256,)>(maybe_params)?;
         Ok(FilterIdParams { filter_id })
     }
 

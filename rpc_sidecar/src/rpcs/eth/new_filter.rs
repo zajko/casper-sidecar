@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use casper_json_rpc::{ConfigLimit, Error as RpcError, Params, RequestHandlersBuilder};
-use casper_types::evm;
 
 use super::{
     super::{NodeClient, RpcWithParams},
+    eth_u256::EthU256,
     log_filter::{
         EthFilterState, LogFilter, RawLogFilter, StoredFilter, ensure_log_block_range_within_limit,
         filter_id_result, latest_block_height,
@@ -42,7 +42,7 @@ impl NewFilter {
         filter_state: Arc<EthFilterState>,
         filter: RawLogFilter,
         max_block_range: u64,
-    ) -> Result<evm::EthU256, RpcError> {
+    ) -> Result<EthU256, RpcError> {
         let filter = LogFilter::try_from(filter)?;
         let latest_height = if filter.block_hash().is_some() {
             None
@@ -92,7 +92,7 @@ fn initial_next_block(filter: &LogFilter, latest_height: Option<u64>) -> Result<
 impl RpcWithParams for NewFilter {
     const METHOD: &'static str = NewFilter::METHOD;
     type RequestParams = RawLogFilter;
-    type ResponseResult = evm::EthU256;
+    type ResponseResult = EthU256;
 
     fn try_parse_params(maybe_params: Option<Params>) -> Result<Self::RequestParams, RpcError> {
         let (filter,) = parse_positional_params::<(RawLogFilter,)>(maybe_params)?;

@@ -14,11 +14,10 @@ use casper_binary_port::{
 };
 use casper_types::{
     AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockWithSignatures,
-    ChainspecRawBytes, Digest, GlobalStateIdentifier, Key, KeyTag, Package, Peers, PublicKey,
-    StoredValue, Transaction, TransactionHash, Transfer,
+    ChainspecRawBytes, Digest, EvmTransaction, GlobalStateIdentifier, Key, KeyTag, Package, Peers,
+    PublicKey, StoredValue, Transaction, TransactionHash, Transfer,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::ContractPackage,
-    evm,
     system::auction::DelegatorKind,
 };
 use futures::{Future, SinkExt, StreamExt};
@@ -176,7 +175,7 @@ pub trait NodeClient: Send + Sync {
 
     async fn evm_call(
         &self,
-        transaction: evm::Transaction,
+        transaction: EvmTransaction,
     ) -> Result<EvmSpeculativeExecutionResult, Error> {
         let resp = self
             .send_request(Command::TrySpeculativeExec {

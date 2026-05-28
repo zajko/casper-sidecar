@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     super::{NodeClient, RpcWithParams},
+    eth_u256::EthU256,
     projection::{LogResponse, project_transaction_receipt},
     types::{EthAddress, HexData, parse_positional_params},
 };
@@ -43,20 +44,20 @@ impl DocExample for GetTransactionReceiptParams {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TransactionReceiptResponse {
     #[serde(rename = "type")]
-    transaction_type: evm::EthU256,
+    transaction_type: EthU256,
     transaction_hash: evm::Hash,
     block_hash: evm::Hash,
-    block_number: evm::EthU256,
+    block_number: EthU256,
     from: EthAddress,
     to: Option<EthAddress>,
     contract_address: Option<EthAddress>,
-    status: evm::EthU256,
-    gas_used: evm::EthU256,
-    effective_gas_price: evm::EthU256,
+    status: EthU256,
+    gas_used: EthU256,
+    effective_gas_price: EthU256,
     logs: Vec<LogResponse>,
     logs_bloom: HexData,
-    transaction_index: evm::EthU256,
-    cumulative_gas_used: evm::EthU256,
+    transaction_index: EthU256,
+    cumulative_gas_used: EthU256,
 }
 
 impl DocExample for Option<TransactionReceiptResponse> {

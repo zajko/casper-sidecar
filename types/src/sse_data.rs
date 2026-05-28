@@ -20,7 +20,7 @@ use super::testing;
 use casper_types::ChainNameDigest;
 use casper_types::{
     Block, BlockHash, EraId, FinalitySignature, InitiatorAddr, ProtocolVersion, PublicKey,
-    TimeDiff, Timestamp, Transaction, TransactionHash, contract_messages::Messages,
+    TimeDiff, Timestamp, Transaction, TransactionHash, contract_messages::Messages, evm,
     execution::ExecutionResult,
 };
 #[cfg(feature = "sse-data-testing")]
@@ -70,7 +70,8 @@ pub enum SseData {
     /// The given transaction has been executed, committed and forms part of the given block.
     TransactionProcessed {
         transaction_hash: Box<TransactionHash>,
-        initiator_addr: Box<InitiatorAddr>,
+        initiator_addr: Option<Box<InitiatorAddr>>,
+        evm_initiator_addr: Option<Box<evm::Address>>,
         timestamp: Timestamp,
         ttl: TimeDiff,
         block_hash: Box<BlockHash>,
@@ -166,10 +167,17 @@ impl SseData {
         let transaction = Transaction::random(rng);
         let timestamp = transaction.timestamp();
         let ttl = transaction.ttl();
+        let (initiator_addr, evm_initiator_addr) = match &transaction {
+            Transaction::Deploy(_) | Transaction::V1(_) => {
+                (transaction.initiator_addr().map(Box::new), None)
+            }
+            Transaction::Evm(transaction) => (None, Some(Box::new(transaction.from()))),
+        };
 
         SseData::TransactionProcessed {
             transaction_hash: Box::new(TransactionHash::random(rng)),
-            initiator_addr: Box::new(transaction.initiator_addr().clone()),
+            initiator_addr,
+            evm_initiator_addr,
             timestamp,
             ttl,
             block_hash: Box::new(BlockHash::random(rng)),

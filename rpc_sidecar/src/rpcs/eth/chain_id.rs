@@ -2,11 +2,12 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use casper_json_rpc::Error as RpcError;
-use casper_types::evm;
+use casper_types::EvmConfig;
 use serde::Deserialize;
 
 use super::{
     super::{NodeClient, RpcWithoutParams},
+    eth_u256::EthU256,
     types::internal_error,
 };
 
@@ -15,15 +16,15 @@ pub struct ChainId;
 
 #[derive(Deserialize)]
 struct ChainspecEvmConfig {
-    evm: evm::EvmConfig,
+    evm: EvmConfig,
 }
 
 #[async_trait]
 impl RpcWithoutParams for ChainId {
     const METHOD: &'static str = "eth_chainId";
-    type ResponseResult = evm::EthU256;
+    type ResponseResult = EthU256;
 
-    async fn do_handle_request(node_client: Arc<dyn NodeClient>) -> Result<evm::EthU256, RpcError> {
+    async fn do_handle_request(node_client: Arc<dyn NodeClient>) -> Result<EthU256, RpcError> {
         let chainspec = node_client
             .read_chainspec_bytes()
             .await
@@ -32,6 +33,6 @@ impl RpcWithoutParams for ChainId {
             .map_err(|error| internal_error(format!("invalid chainspec bytes: {error}")))?;
         let chainspec = toml::from_str::<ChainspecEvmConfig>(chainspec)
             .map_err(|error| internal_error(format!("invalid chainspec toml: {error}")))?;
-        Ok(evm::EthU256::from(chainspec.evm.chain_id))
+        Ok(EthU256::from(chainspec.evm.chain_id))
     }
 }

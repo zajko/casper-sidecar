@@ -3,6 +3,7 @@
 mod block_number;
 mod call;
 mod chain_id;
+mod eth_u256;
 mod get_block_by_number;
 mod get_filter_changes;
 mod get_filter_logs;

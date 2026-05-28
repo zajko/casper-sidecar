@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use casper_json_rpc::{ConfigLimit, Error as RpcError, Params, RequestHandlersBuilder};
-use casper_types::evm;
 
 use super::{
     super::{NodeClient, RpcWithParams},
+    eth_u256::EthU256,
     log_filter::{EthFilterState, FilterIdParams, filter_id_from_params, logs_for_filter},
     projection::LogResponse,
     types::{internal_error, invalid_params, parse_positional_params},
@@ -56,7 +56,7 @@ impl RpcWithParams for GetFilterLogs {
     type ResponseResult = Vec<LogResponse>;
 
     fn try_parse_params(maybe_params: Option<Params>) -> Result<Self::RequestParams, RpcError> {
-        let (filter_id,) = parse_positional_params::<(evm::EthU256,)>(maybe_params)?;
+        let (filter_id,) = parse_positional_params::<(EthU256,)>(maybe_params)?;
         Ok(FilterIdParams { filter_id })
     }
 

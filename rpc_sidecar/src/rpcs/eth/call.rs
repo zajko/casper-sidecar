@@ -2,12 +2,13 @@ use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use casper_json_rpc::{Error as RpcError, Params, ReservedErrorCode};
-use casper_types::{TimeDiff, Timestamp, U256, evm};
+use casper_types::{EvmConfig, EvmTransaction, TimeDiff, Timestamp, U256, evm};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
     super::{NodeClient, RpcWithParams},
+    eth_u256::EthU256,
     types::{
         BlockTag, DEFAULT_ETH_CALL_GAS_LIMIT, EthAddress, HexData, internal_error, invalid_params,
         parse_positional_params,
@@ -32,7 +33,7 @@ const DEFAULT_EVM_CALL_TTL: TimeDiff = TimeDiff::from_seconds(300);
 
 #[derive(Deserialize)]
 struct ChainspecEvmConfig {
-    evm: evm::EvmConfig,
+    evm: EvmConfig,
 }
 
 /// Call object accepted by `eth_call`.
@@ -43,9 +44,9 @@ pub(crate) struct CallObject {
     to: Option<EthAddress>,
     data: Option<HexData>,
     input: Option<HexData>,
-    value: Option<evm::EthU256>,
-    gas: Option<evm::EthU256>,
-    gas_price: Option<evm::EthU256>,
+    value: Option<EthU256>,
+    gas: Option<EthU256>,
+    gas_price: Option<EthU256>,
 }
 
 impl CallObject {
@@ -79,7 +80,7 @@ impl CallObject {
 
     fn gas_limit(&self) -> Result<u64, RpcError> {
         self.gas
-            .map(evm::EthU256::as_u64)
+            .map(EthU256::as_u64)
             .transpose()
             .map_err(invalid_params)
             .map(|maybe_gas| maybe_gas.unwrap_or(DEFAULT_ETH_CALL_GAS_LIMIT))
@@ -126,7 +127,7 @@ impl From<PositionalParams> for CallParams {
     }
 }
 
-fn eth_u256_to_u128(value: evm::EthU256) -> Result<u128, RpcError> {
+fn eth_u256_to_u128(value: EthU256) -> Result<u128, RpcError> {
     let value = value.value();
     if value > U256::from(u128::MAX) {
         return Err(invalid_params("quantity exceeds u128"));
@@ -140,7 +141,7 @@ fn eth_u256_to_u128(value: evm::EthU256) -> Result<u128, RpcError> {
     ))
 }
 
-async fn read_evm_config(node_client: &dyn NodeClient) -> Result<evm::EvmConfig, RpcError> {
+async fn read_evm_config(node_client: &dyn NodeClient) -> Result<EvmConfig, RpcError> {
     let chainspec = node_client
         .read_chainspec_bytes()
         .await
@@ -154,9 +155,9 @@ async fn read_evm_config(node_client: &dyn NodeClient) -> Result<evm::EvmConfig,
 
 fn new_evm_call_transaction(
     call: &CallObject,
-    evm_config: evm::EvmConfig,
-) -> Result<evm::Transaction, RpcError> {
-    Ok(evm::Transaction::new_unsigned_call(
+    evm_config: EvmConfig,
+) -> Result<EvmTransaction, RpcError> {
+    Ok(EvmTransaction::new_unsigned_call(
         Timestamp::zero(),
         DEFAULT_EVM_CALL_TTL,
         evm_config.chain_id,
@@ -174,7 +175,7 @@ fn new_evm_call_transaction(
 struct EthCallError {
     message: String,
     data: HexData,
-    gas_used: evm::EthU256,
+    gas_used: EthU256,
 }
 
 /// `eth_call`.
@@ -214,7 +215,7 @@ impl RpcWithParams for Call {
                         .unwrap_or("EVM call failed")
                         .to_string(),
                     data: HexData::from(result.evm_output()),
-                    gas_used: evm::EthU256::from(receipt.gas_used),
+                    gas_used: EthU256::from(receipt.gas_used),
                 },
             ))
         }
@@ -240,8 +241,8 @@ mod tests {
                 to: Some(EthAddress::from(to)),
                 data: Some(HexData::from(input.clone())),
                 input: None,
-                value: Some(evm::EthU256::from(U256::from(1))),
-                gas: Some(evm::EthU256::from(1_000u64)),
+                value: Some(EthU256::from(U256::from(1))),
+                gas: Some(EthU256::from(1_000u64)),
                 gas_price: None,
             },
             evm_config(),
@@ -265,7 +266,7 @@ mod tests {
 
         let transaction = new_evm_call_transaction(
             &CallObject {
-                gas_price: Some(evm::EthU256::from(gas_price)),
+                gas_price: Some(EthU256::from(gas_price)),
                 ..CallObject::default()
             },
             evm_config(),
@@ -277,7 +278,7 @@ mod tests {
 
     #[test]
     fn eth_u256_to_u128_rejects_overflow() {
-        let result = eth_u256_to_u128(evm::EthU256::from(U256::from(u128::MAX) + U256::one()));
+        let result = eth_u256_to_u128(EthU256::from(U256::from(u128::MAX) + U256::one()));
 
         assert!(matches!(
             result,
@@ -285,8 +286,8 @@ mod tests {
         ));
     }
 
-    fn evm_config() -> evm::EvmConfig {
-        evm::EvmConfig {
+    fn evm_config() -> EvmConfig {
+        EvmConfig {
             enabled: true,
             chain_id: EVM_CHAIN_ID,
             base_fee: EVM_BASE_FEE,
