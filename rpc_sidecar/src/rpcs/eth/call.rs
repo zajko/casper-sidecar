@@ -2,7 +2,11 @@ use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use casper_json_rpc::{Error as RpcError, Params, ReservedErrorCode};
-use casper_types::{EvmConfig, EvmTransaction, TimeDiff, Timestamp, U256, evm};
+use casper_types::{
+    EvmConfig, EvmTransaction, InitiatorAddr, TimeDiff, Timestamp, U256,
+    account::{ACCOUNT_HASH_LENGTH, AccountHash},
+    evm,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -157,17 +161,29 @@ fn new_evm_call_transaction(
     call: &CallObject,
     evm_config: EvmConfig,
 ) -> Result<EvmTransaction, RpcError> {
+    let from = call.from();
+    let initiator_addr = evm_account_hash_initiator(from);
     Ok(EvmTransaction::new_unsigned_call(
         Timestamp::zero(),
         DEFAULT_EVM_CALL_TTL,
+        initiator_addr,
         evm_config.chain_id,
-        call.from(),
+        from,
         call.to(),
         call.value(),
         call.input()?,
         call.gas_limit()?,
         call.gas_price(evm_config.base_fee)?,
     ))
+}
+
+fn evm_account_hash_initiator(from: evm::Address) -> InitiatorAddr {
+    let mut account_hash = [0; ACCOUNT_HASH_LENGTH];
+    // `eth_call` has no Casper public key, but node-side EVM execution now
+    // requires an initiator. Use a deterministic AccountHash representation
+    // with the 20-byte EVM address in the low bytes and zero padding above it.
+    account_hash[ACCOUNT_HASH_LENGTH - evm::ADDRESS_LENGTH..].copy_from_slice(from.as_bytes());
+    InitiatorAddr::AccountHash(AccountHash::new(account_hash))
 }
 
 #[derive(Serialize)]
@@ -250,9 +266,13 @@ mod tests {
         .expect("transaction should build");
 
         assert!(transaction.is_unsigned_call());
-        assert!(transaction.approvals().is_empty());
+        assert!(transaction.approval().is_none());
         assert_eq!(transaction.chain_id(), Some(EVM_CHAIN_ID));
         assert_eq!(transaction.from(), from);
+        assert_eq!(
+            transaction.initiator_addr(),
+            &evm_account_hash_initiator(from)
+        );
         assert_eq!(transaction.to(), Some(to));
         assert_eq!(transaction.value(), U256::from(1));
         assert_eq!(transaction.input(), input.as_slice());
