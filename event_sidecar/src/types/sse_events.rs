@@ -37,7 +37,7 @@ pub struct BlockAdded {
     #[schema(value_type = [u8; BlockHash::LENGTH])]
     block_hash: BlockHash,
     #[schema(value_type = Object)]
-    block: Box<Block>,
+    block: Arc<Block>,
 }
 
 #[cfg(test)]
@@ -71,7 +71,7 @@ impl BlockAdded {
         };
         Self {
             block_hash: *block.hash(),
-            block: Box::new(block),
+            block: Arc::new(block),
         }
     }
 }
@@ -161,6 +161,14 @@ pub struct TransactionProcessed {
 impl TransactionProcessed {
     pub fn identifier(&self) -> String {
         transaction_hash_to_identifier(&self.transaction_hash)
+    }
+
+    pub fn transaction_hash(&self) -> &TransactionHash {
+        &self.transaction_hash
+    }
+
+    pub fn block_hash(&self) -> &BlockHash {
+        &self.block_hash
     }
 
     pub fn transaction_type_id(&self) -> TransactionTypeId {

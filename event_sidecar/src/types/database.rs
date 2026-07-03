@@ -488,7 +488,7 @@ pub enum StatementWrapper {
 #[async_trait]
 pub trait TransactionWrapper: Send + Sync {
     /// Execute the *sql* param in transaction
-    async fn execute(&self, sql: &str) -> Result<(), DatabaseWriteError>;
+    async fn execute(&self, sql: String) -> Result<(), DatabaseWriteError>;
 }
 
 /// Trait used to abstract a set of instructions necessary to perform a migration.
