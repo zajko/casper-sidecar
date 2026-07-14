@@ -95,6 +95,9 @@ fn map_transform_v2(ex_ef: &TransformV2) -> Option<TransformKindV1> {
         TransformKindV2::AddUInt512(v) => Some(TransformKindV1::AddUInt512(*v)),
         TransformKindV2::AddKeys(keys) => Some(handle_named_keys(keys)),
         TransformKindV2::Prune(key) => Some(TransformKindV1::Prune(*key)),
+        TransformKindV2::Ret(_) | TransformKindV2::EntryPointCalled(_, _) => {
+            Some(TransformKindV1::Identity)
+        }
         TransformKindV2::Failure(err) => Some(TransformKindV1::Failure(err.to_string())),
     };
     maybe_transform_kind

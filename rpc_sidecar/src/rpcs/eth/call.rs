@@ -90,11 +90,11 @@ impl CallObject {
             .map(|maybe_gas| maybe_gas.unwrap_or(DEFAULT_ETH_CALL_GAS_LIMIT))
     }
 
-    fn gas_price(&self, default_base_fee: u64) -> Result<u128, RpcError> {
+    fn gas_price(&self, default_base_fee: u128) -> Result<u128, RpcError> {
         self.gas_price
             .map(eth_u256_to_u128)
             .transpose()
-            .map(|maybe_gas_price| maybe_gas_price.unwrap_or(u128::from(default_base_fee)))
+            .map(|maybe_gas_price| maybe_gas_price.unwrap_or(default_base_fee))
     }
 }
 
@@ -173,7 +173,7 @@ fn new_evm_call_transaction(
         call.value(),
         call.input()?,
         call.gas_limit()?,
-        call.gas_price(evm_config.base_fee)?,
+        call.gas_price(evm_config.base_fee_wei())?,
     ))
 }
 
@@ -243,7 +243,8 @@ mod tests {
     use super::*;
 
     const EVM_CHAIN_ID: u64 = 7;
-    const EVM_BASE_FEE: u64 = 1;
+    const EVM_BASE_FEE: u64 = 3;
+    const EVM_WEI_PER_MOTE: u64 = 1_000_000_000;
 
     #[test]
     fn eth_call_builds_unsigned_evm_transaction() {
@@ -277,7 +278,10 @@ mod tests {
         assert_eq!(transaction.value(), U256::from(1));
         assert_eq!(transaction.input(), input.as_slice());
         assert_eq!(transaction.gas_limit(), 1_000);
-        assert_eq!(transaction.gas_price(), Some(u128::from(EVM_BASE_FEE)));
+        assert_eq!(
+            transaction.gas_price(),
+            Some(u128::from(EVM_BASE_FEE) * u128::from(EVM_WEI_PER_MOTE))
+        );
     }
 
     #[test]
@@ -311,6 +315,7 @@ mod tests {
             enabled: true,
             chain_id: EVM_CHAIN_ID,
             base_fee: EVM_BASE_FEE,
+            wei_per_mote: EVM_WEI_PER_MOTE,
             ..Default::default()
         }
     }

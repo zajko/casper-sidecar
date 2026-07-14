@@ -67,6 +67,7 @@ pub(crate) struct BlockResponse {
     number: EthU256,
     hash: evm::Hash,
     parent_hash: evm::Hash,
+    parent_beacon_block_root: evm::Hash,
     nonce: Option<HexData>,
     mix_hash: evm::Hash,
     sha3_uncles: evm::Hash,
@@ -124,6 +125,7 @@ impl RpcWithParams for GetBlockByNumber {
             number: block.number,
             hash: block.hash,
             parent_hash: block.parent_hash,
+            parent_beacon_block_root: block.parent_beacon_block_root,
             nonce: Some(HexData::from(vec![0; 8])),
             mix_hash: evm::Hash::ZERO,
             sha3_uncles: evm::EMPTY_CODE_HASH,
@@ -131,7 +133,7 @@ impl RpcWithParams for GetBlockByNumber {
             transactions_root: block.transactions_root,
             state_root: block.state_root,
             receipts_root: block.receipts_root,
-            miner: EthAddress::from(evm::Address::ZERO),
+            miner: block.miner,
             difficulty: EthU256::from(0u8),
             total_difficulty: EthU256::from(0u8),
             extra_data: HexData::from(Vec::new()),
@@ -150,7 +152,12 @@ impl RpcWithParams for GetBlockByNumber {
 mod tests {
     use std::sync::Arc;
 
+    use casper_binary_port::InformationRequest;
     use casper_json_rpc::ReservedErrorCode;
+    use casper_types::{
+        Block, BlockSignatures, BlockWithSignatures, TestBlockBuilder, testing::TestRng,
+    };
+    use serde_json::json;
 
     use super::*;
     use crate::rpcs::test_utils::BinaryPortMock;
@@ -174,5 +181,73 @@ mod tests {
                 "full transaction objects are not supported yet"
             )
         );
+    }
+
+    #[tokio::test]
+    async fn reports_block_proposer_as_miner() {
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let expected_miner = EthAddress::from(evm::Address::from_block_proposer_public_key(
+            block.proposer(),
+        ));
+        let node_client = Arc::new(BinaryPortMock::new());
+        node_client
+            .add_block_with_signatures(
+                BlockWithSignatures::new(block, BlockSignatures::random(rng)),
+                InformationRequest::BlockWithSignatures(None),
+            )
+            .await;
+
+        let response = GetBlockByNumber::do_handle_request(
+            node_client.clone(),
+            GetBlockByNumberParams {
+                block: BlockNumberParam::Tag(BlockTag::Latest),
+                full_transactions: false,
+            },
+        )
+        .await
+        .expect("request should succeed")
+        .expect("block should be returned");
+
+        assert_eq!(response.miner, expected_miner);
+        node_client.verify_no_lingering().await;
+    }
+
+    #[test]
+    fn serializes_parent_beacon_block_root_as_parent_hash() {
+        let parent_hash = evm::Hash::new([7; evm::HASH_LENGTH]);
+        let response = BlockResponse {
+            number: EthU256::from(1u8),
+            hash: evm::Hash::new([8; evm::HASH_LENGTH]),
+            parent_hash,
+            parent_beacon_block_root: parent_hash,
+            nonce: Some(HexData::from(vec![0; 8])),
+            mix_hash: evm::Hash::ZERO,
+            sha3_uncles: evm::EMPTY_CODE_HASH,
+            logs_bloom: HexData::from(Vec::new()),
+            transactions_root: evm::Hash::ZERO,
+            state_root: evm::Hash::ZERO,
+            receipts_root: evm::Hash::ZERO,
+            miner: EthAddress::from(evm::Address::ZERO),
+            difficulty: EthU256::from(0u8),
+            total_difficulty: EthU256::from(0u8),
+            extra_data: HexData::from(Vec::new()),
+            size: EthU256::from(0u8),
+            gas_limit: EthU256::from(DEFAULT_ETH_CALL_GAS_LIMIT),
+            gas_used: EthU256::from(0u8),
+            timestamp: EthU256::from(1u8),
+            transactions: Vec::new(),
+            uncles: Vec::new(),
+            base_fee_per_gas: EthU256::from(0u8),
+        };
+
+        let value = serde_json::to_value(response).expect("response should serialize");
+
+        assert_eq!(
+            value["parentBeaconBlockRoot"],
+            serde_json::to_value(parent_hash).expect("hash should serialize")
+        );
+        assert_eq!(value["parentBeaconBlockRoot"], value["parentHash"]);
+        assert_ne!(value["parentBeaconBlockRoot"], json!(null));
     }
 }

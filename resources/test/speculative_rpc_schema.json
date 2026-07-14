@@ -1489,6 +1489,52 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "description": "Registers a value return from the contract",
+            "type": "object",
+            "required": [
+              "Ret"
+            ],
+            "properties": {
+              "Ret": {
+                "$ref": "#/components/schemas/RetValue"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Registers an entry point called. If the hash addr is none that means that the call was made to session bytes.",
+            "type": "object",
+            "required": [
+              "EntryPointCalled"
+            ],
+            "properties": {
+              "EntryPointCalled": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": "integer",
+                      "format": "uint8",
+                      "minimum": 0.0
+                    },
+                    "maxItems": 32,
+                    "minItems": 32
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "maxItems": 2,
+                "minItems": 2
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -3805,6 +3851,44 @@
           }
         }
       },
+      "RetValue": {
+        "description": "Type disambiguating between the formatting of the returned data.",
+        "oneOf": [
+          {
+            "description": "The returned data is CLValue.",
+            "type": "object",
+            "required": [
+              "CLValue"
+            ],
+            "properties": {
+              "CLValue": {
+                "$ref": "#/components/schemas/CLValue"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "The returned data is serialized bytes.",
+            "type": "object",
+            "required": [
+              "Bytes"
+            ],
+            "properties": {
+              "Bytes": {
+                "$ref": "#/components/schemas/Bytes"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "There was no returned data.",
+            "type": "string",
+            "enum": [
+              "Unit"
+            ]
+          }
+        ]
+      },
       "Message": {
         "description": "Message that was emitted by an addressable entity during execution.",
         "type": "object",
@@ -4098,14 +4182,14 @@
         ]
       },
       "EvmTransaction": {
-        "description": "An unsigned Ethereum transaction payload plus one Ethereum-style Casper approval.",
+        "description": "An unsigned Ethereum transaction payload plus one Ethereum-style approval.",
         "type": "object",
         "required": [
-          "approvals",
           "authorization_list",
           "from",
           "gas_limit",
           "hash",
+          "initiator_addr",
           "input",
           "kind",
           "max_fee_per_gas",
@@ -4120,6 +4204,9 @@
           },
           "ttl": {
             "$ref": "#/components/schemas/TimeDiff"
+          },
+          "initiator_addr": {
+            "$ref": "#/components/schemas/InitiatorAddr"
           },
           "hash": {
             "$ref": "#/components/schemas/EvmTransactionHash"
@@ -4196,12 +4283,15 @@
               "$ref": "#/components/schemas/SetCodeAuthorization"
             }
           },
-          "approvals": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Approval"
-            },
-            "uniqueItems": true
+          "approval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvmApproval"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -4297,6 +4387,22 @@
                 "$ref": "#/components/schemas/U256"
               }
             ]
+          }
+        }
+      },
+      "EvmApproval": {
+        "description": "A Casper approval plus the Ethereum recovery parity for the same signature.\n\nCasper [`Signature::Secp256k1`] stores the canonical 64-byte ECDSA signature, `r || s`. Ethereum signed transactions carry one extra bit, historically encoded as `v` and in typed transactions as `yParity`, so the sender can be recovered from the transaction payload. `EvmApproval` keeps that Ethereum recovery parity next to the normal Casper approval, allowing the signed Ethereum envelope and transaction hash to be reconstructed without guessing which recovery ID was present in the original payload.",
+        "type": "object",
+        "required": [
+          "approval",
+          "y_parity"
+        ],
+        "properties": {
+          "approval": {
+            "$ref": "#/components/schemas/Approval"
+          },
+          "y_parity": {
+            "type": "boolean"
           }
         }
       }

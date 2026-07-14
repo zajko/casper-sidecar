@@ -179,7 +179,7 @@ pub trait NodeClient: Send + Sync {
     ) -> Result<EvmSpeculativeExecutionResult, Error> {
         let resp = self
             .send_request(Command::TrySpeculativeExec {
-                transaction: Transaction::Evm(transaction),
+                transaction: Transaction::Evm(Box::new(transaction)),
             })
             .await?;
         parse_response::<EvmSpeculativeExecutionResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)

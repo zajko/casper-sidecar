@@ -169,7 +169,7 @@ impl SseData {
         let ttl = transaction.ttl();
         let (initiator_addr, evm_initiator_addr) = match &transaction {
             Transaction::Deploy(_) | Transaction::V1(_) => {
-                (transaction.initiator_addr().map(Box::new), None)
+                (Some(Box::new(transaction.initiator_addr().clone())), None)
             }
             Transaction::Evm(transaction) => (None, Some(Box::new(transaction.from()))),
         };
