@@ -80,9 +80,7 @@ impl LegacySseData {
     #[must_use]
     pub fn from(data: &SseData) -> Option<Self> {
         match data {
-            SseData::ApiVersion(protocol_version) => {
-                Some(LegacySseData::ApiVersion(*protocol_version))
-            }
+            SseData::ApiVersion(protocol_version) => Some(Self::ApiVersion(*protocol_version)),
             // we don't translate steps
             SseData::Shutdown | SseData::Step { .. } => None,
             SseData::BlockAdded { block_hash, block } => {
@@ -158,7 +156,9 @@ fn maybe_translate_transaction_processed(
             let initiator_addr = initiator_addr?;
             let account = match initiator_addr {
                 InitiatorAddr::PublicKey(public_key) => public_key,
-                InitiatorAddr::AccountHash(_) => return None, //This shouldn't happen since we already are in TransactionHash::Deploy
+                // A deploy always carries its public key, so neither address-only variant can be
+                // represented in the legacy DeployProcessed event.
+                InitiatorAddr::AccountHash(_) | InitiatorAddr::Eoa(_) => return None,
             };
             let execution_result = match execution_result {
                 ExecutionResult::V1(result) => result.clone(),
@@ -207,6 +207,19 @@ mod tests {
                 scenario_name.as_str()
             );
         }
+    }
+
+    #[test]
+    fn should_not_translate_eoa_initiator_to_legacy_deploy() {
+        let mut sse_data = deploy_processed();
+        let SseData::TransactionProcessed { initiator_addr, .. } = &mut sse_data else {
+            panic!("fixture should be a processed deploy")
+        };
+        *initiator_addr = Some(Box::new(InitiatorAddr::Eoa(
+            casper_types::evm::Address::ZERO,
+        )));
+
+        assert_eq!(LegacySseData::from(&sse_data), None);
     }
 
     #[allow(clippy::too_many_lines)]

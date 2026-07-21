@@ -470,6 +470,9 @@ pub enum InvalidTransactionOrDeploy {
     /// The EVM transaction nonce did not match the account nonce.
     #[error("The EVM transaction nonce does not match the account nonce")]
     TransactionEvmInvalidNonce,
+    /// The transaction initiator address is invalid.
+    #[error("The transaction initiator address is invalid")]
+    TransactionInvalidInitiatorAddr,
     /// The catchall error from a casper node
     #[error("The transaction or deploy sent to the network was invalid for an unspecified reason")]
     TransactionOrDeployUnspecified,
@@ -664,6 +667,9 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             }
             ErrorCode::InvalidTransactionPricingMode => Self::TransactionPricingMode,
             ErrorCode::InvalidTransactionEvmInvalidNonce => Self::TransactionEvmInvalidNonce,
+            ErrorCode::InvalidTransactionInvalidInitiatorAddr => {
+                Self::TransactionInvalidInitiatorAddr
+            }
             ErrorCode::EmptyBlockchain => Self::EmptyBlockchain,
             ErrorCode::ExpectedDeploy => Self::ExpectedDeploy,
             ErrorCode::ExpectedTransaction => Self::ExpectedTransaction,
@@ -879,6 +885,7 @@ impl Error {
                 | ErrorCode::InvalidTransactionUnableToCalculateGasCost
                 | ErrorCode::InvalidTransactionPricingMode
                 | ErrorCode::InvalidTransactionEvmInvalidNonce
+                | ErrorCode::InvalidTransactionInvalidInitiatorAddr
                 | ErrorCode::EmptyBlockchain
                 | ErrorCode::ExpectedDeploy
                 | ErrorCode::ExpectedTransaction
@@ -1756,6 +1763,10 @@ mod tests {
         assert!(matches!(
             Error::from_error_code(ErrorCode::InvalidTransactionEvmInvalidNonce as u16),
             Error::InvalidTransaction(InvalidTransactionOrDeploy::TransactionEvmInvalidNonce)
+        ));
+        assert!(matches!(
+            Error::from_error_code(ErrorCode::InvalidTransactionInvalidInitiatorAddr as u16),
+            Error::InvalidTransaction(InvalidTransactionOrDeploy::TransactionInvalidInitiatorAddr)
         ));
         assert!(matches!(
             Error::from_error_code(ErrorCode::ExpectedNamedArguments as u16),

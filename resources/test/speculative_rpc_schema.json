@@ -1321,8 +1321,25 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "description": "An externally-owned Ethereum account address.",
+            "type": "object",
+            "required": [
+              "Eoa"
+            ],
+            "properties": {
+              "Eoa": {
+                "$ref": "#/components/schemas/Address"
+              }
+            },
+            "additionalProperties": false
           }
         ]
+      },
+      "Address": {
+        "description": "A 20-byte Ethereum account or contract address encoded as 0x-prefixed hexadecimal.",
+        "type": "string"
       },
       "Gas": {
         "description": "The `Gas` struct represents a `U512` amount of gas.",
@@ -4189,7 +4206,6 @@
           "from",
           "gas_limit",
           "hash",
-          "initiator_addr",
           "input",
           "kind",
           "max_fee_per_gas",
@@ -4204,9 +4220,6 @@
           },
           "ttl": {
             "$ref": "#/components/schemas/TimeDiff"
-          },
-          "initiator_addr": {
-            "$ref": "#/components/schemas/InitiatorAddr"
           },
           "hash": {
             "$ref": "#/components/schemas/EvmTransactionHash"
@@ -4294,10 +4307,6 @@
             ]
           }
         }
-      },
-      "Address": {
-        "description": "A 20-byte Ethereum account or contract address encoded as hexadecimal.",
-        "type": "string"
       },
       "EvmTransactionKind": {
         "description": "The supported Ethereum transaction envelope kinds.",

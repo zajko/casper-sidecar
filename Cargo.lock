@@ -604,7 +604,7 @@ dependencies = [
 [[package]]
 name = "casper-binary-port"
 version = "1.1.1"
-source = "git+https://github.com/casper-network/casper-node.git?branch=feat-evm#0dce2f257d2be018ba54968d7e24cf3027a8a638"
+source = "git+https://github.com/casper-network/casper-node.git?branch=feat-evm#8177511cbee8f2c578b556d5e73cb9d220b4b2e6"
 dependencies = [
  "bincode",
  "bytes",
@@ -802,7 +802,7 @@ dependencies = [
 [[package]]
 name = "casper-types"
 version = "7.0.0"
-source = "git+https://github.com/casper-network/casper-node.git?branch=feat-evm#0dce2f257d2be018ba54968d7e24cf3027a8a638"
+source = "git+https://github.com/casper-network/casper-node.git?branch=feat-evm#8177511cbee8f2c578b556d5e73cb9d220b4b2e6"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
