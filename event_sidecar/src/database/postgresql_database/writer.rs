@@ -1,5 +1,5 @@
 use super::PostgreSqlDatabase;
-use crate::{database::types::DDLConfiguration, database_writer_implementation};
+use crate::database::types::DDLConfiguration;
 use sea_query::PostgresQueryBuilder;
 #[cfg(test)]
 use sqlx::postgres::PgRow;

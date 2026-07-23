@@ -94,18 +94,18 @@ pub async fn build_rpc_server<'a>(
         futures.push(future);
     }
     let speculative_server_config = config.speculative_exec_server;
-    if let Some(config) = speculative_server_config {
-        if config.enable_server {
-            let future = run_speculative_exec(config, node_client)
-                .map(|q| {
-                    if let Err(e) = q {
-                        error!("Rpc speculative server finished with error: {e}");
-                    }
-                    Ok(ExitCode::SUCCESS)
-                })
-                .boxed();
-            futures.push(future);
-        }
+    if let Some(config) = speculative_server_config
+        && config.enable_server
+    {
+        let future = run_speculative_exec(config, node_client)
+            .map(|q| {
+                if let Err(e) = q {
+                    error!("Rpc speculative server finished with error: {e}");
+                }
+                Ok(ExitCode::SUCCESS)
+            })
+            .boxed();
+        futures.push(future);
     }
     let reconnect_loop = reconnect_loop
         .map(|q| {

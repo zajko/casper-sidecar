@@ -267,8 +267,6 @@ impl<V> CacheEnvelope<V> {
 
 #[derive(Debug, Error)]
 pub(crate) enum CacheError {
-    #[error("I/O error")]
-    IoError(String),
     #[error("Bytesrepr error")]
     Bytesrepr(#[from] bytesrepr::Error),
     #[error("LMDB error")]

@@ -959,7 +959,7 @@ impl<T> Notify<T> {
         })
     }
 
-    fn notified(&self) -> Notified {
+    fn notified(&self) -> Notified<'_> {
         self.inner.notified()
     }
 

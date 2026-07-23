@@ -71,10 +71,10 @@ impl<T: NodeClient + Send + Sync, C: BinaryPortCache + InFlightDataHandling> Nod
             .read_info(InformationRequest::BlockWithSignatures(Some(id)))
             .await?;
         let block = parse_response::<BlockWithSignatures>(&resp.into())?;
-        if let (Some(cache), Some(block)) = (&self.binary_port_cache, &block) {
-            if let Err(err) = cache.put_block_with_signatures(block).await {
-                warn!(%err, "binary port cache: put_block_with_signatures failed");
-            }
+        if let (Some(cache), Some(block)) = (&self.binary_port_cache, &block)
+            && let Err(err) = cache.put_block_with_signatures(block).await
+        {
+            warn!(%err, "binary port cache: put_block_with_signatures failed");
         }
         Ok(block)
     }
@@ -108,10 +108,10 @@ impl<T: NodeClient + Send + Sync, C: BinaryPortCache + InFlightDataHandling> Nod
             .read_info(InformationRequest::BlockHeader(Some(id)))
             .await?;
         let header = parse_response::<BlockHeader>(&resp.into())?;
-        if let (Some(cache), Some(header)) = (&self.binary_port_cache, &header) {
-            if let Err(err) = cache.put_block_header(header).await {
-                warn!(%err, "binary port cache: put_block_header failed");
-            }
+        if let (Some(cache), Some(header)) = (&self.binary_port_cache, &header)
+            && let Err(err) = cache.put_block_header(header).await
+        {
+            warn!(%err, "binary port cache: put_block_header failed");
         }
         Ok(header)
     }
@@ -183,10 +183,10 @@ pub(crate) async fn cache_update_loop<
     loop {
         match sidecar_event_receiver.recv().await {
             Ok(msg) => {
-                if let Some(handler) = client.binary_port_cache.clone() {
-                    if let Err(err) = handler.handle_sidecar_event(msg).await {
-                        warn!(%err, "binary port cache: failed to handle sidecar event");
-                    }
+                if let Some(handler) = client.binary_port_cache.clone()
+                    && let Err(err) = handler.handle_sidecar_event(msg).await
+                {
+                    warn!(%err, "binary port cache: failed to handle sidecar event");
                 }
             }
             Err(x) => match x {
@@ -226,7 +226,10 @@ mod tests {
         let (_tx, rx) = broadcast::channel(16);
         let rng = &mut TestRng::new();
         let binary_port_mock = Arc::new(BinaryPortMock::new());
-        let under_test = Arc::new(CachingNodeClient::new(binary_port_mock.clone(), None));
+        let under_test = Arc::new(CachingNodeClient::new(
+            binary_port_mock.clone(),
+            None::<Arc<HeedBinaryPortCache>>,
+        ));
         let node_client_to_move = under_test.clone();
         tokio::spawn(async move {
             cache_update_loop(node_client_to_move, rx).await.unwrap();
@@ -339,7 +342,10 @@ mod tests {
         let rng = &mut TestRng::new();
         let (_tx, rx) = broadcast::channel(16);
         let binary_port_mock = Arc::new(BinaryPortMock::new());
-        let under_test = Arc::new(CachingNodeClient::new(binary_port_mock.clone(), None));
+        let under_test = Arc::new(CachingNodeClient::new(
+            binary_port_mock.clone(),
+            None::<Arc<HeedBinaryPortCache>>,
+        ));
         let node_client_to_move = under_test.clone();
         tokio::spawn(async move {
             cache_update_loop(node_client_to_move, rx).await.unwrap();

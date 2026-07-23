@@ -1,9 +1,8 @@
 #[cfg(test)]
 use casper_types::ChainNameDigest;
 use casper_types::{
-    AsymmetricType, Block, BlockHash, EraId, InitiatorAddr, ProtocolVersion, PublicKey, TimeDiff,
-    Timestamp, Transaction, TransactionHash, contract_messages::Messages,
-    execution::ExecutionResult,
+    AsymmetricType, Block, BlockHash, EraId, InitiatorAddr, PublicKey, TimeDiff, Timestamp,
+    Transaction, TransactionHash, contract_messages::Messages, execution::ExecutionResult,
 };
 use casper_types::{FinalitySignature as FinSig, Signature};
 #[cfg(test)]
@@ -25,11 +24,6 @@ use std::{
 use utoipa::ToSchema;
 
 use crate::sql::tables::transaction_type::TransactionTypeId;
-
-/// The version of this node's API server.  This event will always be the first sent to a new
-/// client, and will have no associated event ID provided.
-#[derive(Clone, Debug, Serialize, Deserialize, new)]
-pub struct ApiVersion(ProtocolVersion);
 
 /// The given block has been added to the linear chain and stored locally.
 #[derive(Clone, Debug, Serialize, Deserialize, new, ToSchema)]

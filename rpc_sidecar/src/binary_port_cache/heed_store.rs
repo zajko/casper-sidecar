@@ -502,26 +502,26 @@ impl BinaryPortCache for HeedBinaryPortCache {
         };
 
         let mut to_store = in_flight.clone();
-        if let BlockWithSignaturesBuiltInFlight::NotSureBlock { block, signatures } = &to_store {
-            if let (Some(block), false) = (block.clone(), signatures.is_empty()) {
-                let signatures = signatures.clone();
-                let era_id = block.era_id();
-                match self.get_validators(era_id).await? {
-                    CacheEnvelope::Have(validators) => {
-                        to_store = self
-                            .finalize_if_sufficient(block, signatures, &validators)
-                            .await?;
-                    }
-                    CacheEnvelope::DontHave => {
-                        // Validators for this era aren't known yet: remember this block so it
-                        // can be rechecked once they are (see `recheck_pending_blocks_for_era`).
-                        // Don't eagerly fetch them here - `handle_finality_signature`, the other
-                        // caller that can reach this branch, already does that itself (via
-                        // `spawn_validators_fetch_and_recheck`) once, right before calling this;
-                        // doing it again here just duplicates that node round-trip.
-                        self.add_pending_block_for_era(era_id, block.height())
-                            .await?;
-                    }
+        if let BlockWithSignaturesBuiltInFlight::NotSureBlock { block, signatures } = &to_store
+            && let (Some(block), false) = (block.clone(), signatures.is_empty())
+        {
+            let signatures = signatures.clone();
+            let era_id = block.era_id();
+            match self.get_validators(era_id).await? {
+                CacheEnvelope::Have(validators) => {
+                    to_store = self
+                        .finalize_if_sufficient(block, signatures, &validators)
+                        .await?;
+                }
+                CacheEnvelope::DontHave => {
+                    // Validators for this era aren't known yet: remember this block so it
+                    // can be rechecked once they are (see `recheck_pending_blocks_for_era`).
+                    // Don't eagerly fetch them here - `handle_finality_signature`, the other
+                    // caller that can reach this branch, already does that itself (via
+                    // `spawn_validators_fetch_and_recheck`) once, right before calling this;
+                    // doing it again here just duplicates that node round-trip.
+                    self.add_pending_block_for_era(era_id, block.height())
+                        .await?;
                 }
             }
         }
@@ -769,10 +769,10 @@ fn build_block_signatures(
         first_v2.chain_name_hash(),
     ));
     for fs in signatures {
-        if let FinalitySignature::V2(v2) = fs {
-            if v2.block_hash() == block.hash() {
-                block_signatures.insert_signature(v2.public_key().clone(), *v2.signature());
-            }
+        if let FinalitySignature::V2(v2) = fs
+            && v2.block_hash() == block.hash()
+        {
+            block_signatures.insert_signature(v2.public_key().clone(), *v2.signature());
         }
     }
     Some(block_signatures)
@@ -1131,7 +1131,7 @@ impl InFlightDataHandling for HeedBinaryPortCache {
             }
             SidecarEvent::FinalitySignature(finality_signature) => {
                 cache_metrics::inc_handle_call("finality_signature");
-                self.handle_finality_signature(finality_signature).await
+                self.handle_finality_signature(*finality_signature).await
             }
             SidecarEvent::TransactionProcessed { .. } => {
                 cache_metrics::inc_handle_call("transaction_processed");
@@ -1756,7 +1756,9 @@ finality_threshold_fraction = [1, 3]
         );
         store
             .clone()
-            .handle_sidecar_event(SidecarEvent::FinalitySignature(FinalitySignature::V2(fs_a)))
+            .handle_sidecar_event(SidecarEvent::FinalitySignature(Box::new(
+                FinalitySignature::V2(fs_a),
+            )))
             .await
             .unwrap();
 
@@ -1782,7 +1784,9 @@ finality_threshold_fraction = [1, 3]
         );
         store
             .clone()
-            .handle_sidecar_event(SidecarEvent::FinalitySignature(FinalitySignature::V2(fs_b)))
+            .handle_sidecar_event(SidecarEvent::FinalitySignature(Box::new(
+                FinalitySignature::V2(fs_b),
+            )))
             .await
             .unwrap();
 
@@ -1861,7 +1865,9 @@ finality_threshold_fraction = [1, 3]
             );
             store
                 .clone()
-                .handle_sidecar_event(SidecarEvent::FinalitySignature(FinalitySignature::V2(fs)))
+                .handle_sidecar_event(SidecarEvent::FinalitySignature(Box::new(
+                    FinalitySignature::V2(fs),
+                )))
                 .await
                 .unwrap();
         }
@@ -1945,7 +1951,9 @@ finality_threshold_fraction = [1, 3]
         let sse_store = store.clone();
         let sse_task = tokio::spawn(async move {
             sse_store
-                .handle_sidecar_event(SidecarEvent::FinalitySignature(FinalitySignature::V2(fs)))
+                .handle_sidecar_event(SidecarEvent::FinalitySignature(Box::new(
+                    FinalitySignature::V2(fs),
+                )))
                 .await
         });
         let write_through_store = store.clone();
@@ -2000,7 +2008,9 @@ finality_threshold_fraction = [1, 3]
         // only persist the signature and never try to look validators up
         store
             .clone()
-            .handle_sidecar_event(SidecarEvent::FinalitySignature(FinalitySignature::V2(fs)))
+            .handle_sidecar_event(SidecarEvent::FinalitySignature(Box::new(
+                FinalitySignature::V2(fs),
+            )))
             .await
             .unwrap();
 
@@ -2076,7 +2086,9 @@ finality_threshold_fraction = [1, 3]
         );
         store
             .clone()
-            .handle_sidecar_event(SidecarEvent::FinalitySignature(FinalitySignature::V2(fs)))
+            .handle_sidecar_event(SidecarEvent::FinalitySignature(Box::new(
+                FinalitySignature::V2(fs),
+            )))
             .await
             .unwrap();
 

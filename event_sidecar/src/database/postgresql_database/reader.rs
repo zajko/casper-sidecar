@@ -1,5 +1,4 @@
 use super::PostgreSqlDatabase;
-use crate::database_reader_implementation;
 use sea_query::PostgresQueryBuilder;
 use sqlx::{PgPool, postgres::PgRow};
 
