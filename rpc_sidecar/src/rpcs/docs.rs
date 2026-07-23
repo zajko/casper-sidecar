@@ -24,8 +24,9 @@ use super::{
         GetBalance as EthGetBalance, GetBlockByNumber as EthGetBlockByNumber,
         GetFilterChanges as EthGetFilterChanges, GetFilterLogs as EthGetFilterLogs,
         GetLogs as EthGetLogs, GetTransactionCount as EthGetTransactionCount,
-        GetTransactionReceipt as EthGetTransactionReceipt, NewFilter as EthNewFilter,
-        SendRawTransaction as EthSendRawTransaction, UninstallFilter as EthUninstallFilter,
+        GetTransactionReceipt as EthGetTransactionReceipt, NetVersion as EthNetVersion,
+        NewFilter as EthNewFilter, SendRawTransaction as EthSendRawTransaction,
+        UninstallFilter as EthUninstallFilter,
     },
     info::{
         GetChainspec, GetDeploy, GetPeers, GetReward, GetStatus, GetTransaction,
@@ -110,6 +111,9 @@ fn build_open_rpc_schema() -> OpenRpcSchema {
         global_state.toml files",
     );
     schema.push_without_params::<EthChainId>("returns the configured EVM chain ID");
+    schema.push_without_params::<EthNetVersion>(
+        "returns the configured EVM network ID as a decimal string",
+    );
     schema.push_without_params::<EthBlockNumber>("returns the latest block height");
     schema.push_with_params::<EthGetBlockByNumber>("returns an Ethereum-compatible block");
     schema.push_with_params::<EthGetBalance>("returns an EVM account balance in wei");
@@ -663,6 +667,12 @@ mod tests {
                 .methods
                 .iter()
                 .any(|method| method.name == "eth_getBalance")
+        );
+        assert!(
+            schema
+                .methods
+                .iter()
+                .any(|method| method.name == "net_version")
         );
         serde_json::to_string(&schema).expect("OpenRPC schema should serialize");
     }

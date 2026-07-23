@@ -16,8 +16,9 @@ use super::rpcs::{
         GetBalance as EthGetBalance, GetBlockByNumber as EthGetBlockByNumber,
         GetFilterChanges as EthGetFilterChanges, GetFilterLogs as EthGetFilterLogs,
         GetLogs as EthGetLogs, GetTransactionCount as EthGetTransactionCount,
-        GetTransactionReceipt as EthGetTransactionReceipt, NewFilter as EthNewFilter,
-        SendRawTransaction as EthSendRawTransaction, UninstallFilter as EthUninstallFilter,
+        GetTransactionReceipt as EthGetTransactionReceipt, NetVersion as EthNetVersion,
+        NewFilter as EthNewFilter, SendRawTransaction as EthSendRawTransaction,
+        UninstallFilter as EthUninstallFilter,
     },
     info::{GetChainspec, GetDeploy, GetValidatorChanges},
     state::{
@@ -96,6 +97,7 @@ pub async fn run(
     register!(QueryBalance);
     register!(QueryBalanceDetails);
     register!(EthChainId);
+    register!(EthNetVersion);
     register!(EthBlockNumber);
     register!(EthGetBlockByNumber);
     register!(EthGetBalance);

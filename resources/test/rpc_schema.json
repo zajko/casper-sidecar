@@ -1844,6 +1844,27 @@
       ]
     },
     {
+      "name": "net_version",
+      "summary": "returns the configured EVM network ID as a decimal string",
+      "params": [],
+      "result": {
+        "name": "net_version_result",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "examples": [
+        {
+          "name": "net_version_example",
+          "params": [],
+          "result": {
+            "name": "net_version_example_result",
+            "value": "1"
+          }
+        }
+      ]
+    },
+    {
       "name": "eth_blockNumber",
       "summary": "returns the latest block height",
       "params": [],
