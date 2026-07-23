@@ -33,7 +33,9 @@ impl<T: NodeClient + Send + Sync, C: BinaryPortCache + InFlightDataHandling>
 }
 
 #[async_trait]
-impl<T: NodeClient + Send + Sync> NodeClient for CachingNodeClient<T> {
+impl<T: NodeClient + Send + Sync, C: BinaryPortCache + InFlightDataHandling> NodeClient
+    for CachingNodeClient<T, C>
+{
     async fn send_request(&self, req: Command) -> Result<BinaryResponseAndRequest, ClientError> {
         self.inner_client.send_request(req).await
     }
@@ -171,8 +173,11 @@ impl<T: NodeClient + Send + Sync> NodeClient for CachingNodeClient<T> {
     }
 }
 
-pub(crate) async fn cache_update_loop<T: NodeClient + Send + Sync + 'static>(
-    client: Arc<CachingNodeClient<T>>,
+pub(crate) async fn cache_update_loop<
+    T: NodeClient + Send + Sync + 'static,
+    C: BinaryPortCache + InFlightDataHandling + 'static,
+>(
+    client: Arc<CachingNodeClient<T, C>>,
     mut sidecar_event_receiver: Receiver<SidecarEvent>,
 ) -> Result<(), Error> {
     loop {

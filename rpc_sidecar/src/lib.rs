@@ -58,7 +58,7 @@ pub async fn build_rpc_server<'a>(
         .map(|cfg| new_binary_port_cache(cfg, node_client.clone()))
         .transpose()?;
     let node_client: Arc<dyn NodeClient> = if let Some(store) = binary_port_store {
-        let caching_client = Arc::new(CachingNodeClient::new(node_client, Some(store)));
+        let caching_client = Arc::new(CachingNodeClient::new(node_client, Some(store.clone())));
         let cache_loop =
             cache_update_loop(caching_client.clone(), sidecar_event_sender.subscribe())
                 .map(|q| {

@@ -32,7 +32,7 @@ pub enum SidecarEvent {
     BlockAdded {
         block: Arc<Block>,
     },
-    FinalitySignature(FinalitySignature),
+    FinalitySignature(Box<FinalitySignature>),
     TransactionProcessed {
         transaction_hash: TransactionHash,
         block_hash: BlockHash,
