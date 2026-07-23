@@ -1918,6 +1918,52 @@
       ]
     },
     {
+      "name": "eth_getBalance",
+      "summary": "returns an EVM account balance in wei",
+      "params": [
+        {
+          "name": "address",
+          "schema": {
+            "$ref": "#/components/schemas/EthAddress"
+          },
+          "required": true
+        },
+        {
+          "name": "block",
+          "schema": {
+            "$ref": "#/components/schemas/BlockNumberParam"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getBalance_result",
+        "schema": {
+          "description": "Ethereum JSON-RPC quantity encoded as canonical 0x-prefixed hexadecimal.",
+          "type": "string"
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getBalance_example",
+          "params": [
+            {
+              "name": "address",
+              "value": "0x0000000000000000000000000000000000000000"
+            },
+            {
+              "name": "block",
+              "value": "latest"
+            }
+          ],
+          "result": {
+            "name": "eth_getBalance_example_result",
+            "value": "0x0"
+          }
+        }
+      ]
+    },
+    {
       "name": "eth_getTransactionCount",
       "summary": "returns an EVM account nonce",
       "params": [

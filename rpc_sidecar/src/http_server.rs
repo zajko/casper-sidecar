@@ -13,9 +13,9 @@ use super::rpcs::{
     docs::RpcDiscover,
     eth::{
         BlockNumber as EthBlockNumber, Call as EthCall, ChainId as EthChainId, EthFilterState,
-        GetBlockByNumber as EthGetBlockByNumber, GetFilterChanges as EthGetFilterChanges,
-        GetFilterLogs as EthGetFilterLogs, GetLogs as EthGetLogs,
-        GetTransactionCount as EthGetTransactionCount,
+        GetBalance as EthGetBalance, GetBlockByNumber as EthGetBlockByNumber,
+        GetFilterChanges as EthGetFilterChanges, GetFilterLogs as EthGetFilterLogs,
+        GetLogs as EthGetLogs, GetTransactionCount as EthGetTransactionCount,
         GetTransactionReceipt as EthGetTransactionReceipt, NewFilter as EthNewFilter,
         SendRawTransaction as EthSendRawTransaction, UninstallFilter as EthUninstallFilter,
     },
@@ -98,6 +98,7 @@ pub async fn run(
     register!(EthChainId);
     register!(EthBlockNumber);
     register!(EthGetBlockByNumber);
+    register!(EthGetBalance);
     register!(EthGetTransactionCount);
     register!(EthSendRawTransaction);
     register!(EthGetTransactionReceipt);

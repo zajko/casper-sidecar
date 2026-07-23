@@ -21,9 +21,9 @@ use super::{
     },
     eth::{
         BlockNumber as EthBlockNumber, Call as EthCall, ChainId as EthChainId,
-        GetBlockByNumber as EthGetBlockByNumber, GetFilterChanges as EthGetFilterChanges,
-        GetFilterLogs as EthGetFilterLogs, GetLogs as EthGetLogs,
-        GetTransactionCount as EthGetTransactionCount,
+        GetBalance as EthGetBalance, GetBlockByNumber as EthGetBlockByNumber,
+        GetFilterChanges as EthGetFilterChanges, GetFilterLogs as EthGetFilterLogs,
+        GetLogs as EthGetLogs, GetTransactionCount as EthGetTransactionCount,
         GetTransactionReceipt as EthGetTransactionReceipt, NewFilter as EthNewFilter,
         SendRawTransaction as EthSendRawTransaction, UninstallFilter as EthUninstallFilter,
     },
@@ -112,6 +112,7 @@ fn build_open_rpc_schema() -> OpenRpcSchema {
     schema.push_without_params::<EthChainId>("returns the configured EVM chain ID");
     schema.push_without_params::<EthBlockNumber>("returns the latest block height");
     schema.push_with_params::<EthGetBlockByNumber>("returns an Ethereum-compatible block");
+    schema.push_with_params::<EthGetBalance>("returns an EVM account balance in wei");
     schema.push_with_params::<EthGetTransactionCount>("returns an EVM account nonce");
     schema.push_with_params::<EthSendRawTransaction>(
         "submits a signed Ethereum transaction as a Casper EVM transaction",
@@ -656,6 +657,12 @@ mod tests {
                 .methods
                 .iter()
                 .any(|method| method.name == "eth_getTransactionReceipt")
+        );
+        assert!(
+            schema
+                .methods
+                .iter()
+                .any(|method| method.name == "eth_getBalance")
         );
         serde_json::to_string(&schema).expect("OpenRPC schema should serialize");
     }

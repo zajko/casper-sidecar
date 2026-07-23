@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     super::{NodeClient, RpcWithParams},
+    config::read_evm_config,
     eth_u256::EthU256,
     types::{
         BlockTag, DEFAULT_ETH_CALL_GAS_LIMIT, EthAddress, HexData, internal_error, invalid_params,
@@ -30,11 +31,6 @@ static CALL_PARAMS_EXAMPLE: LazyLock<CallParams> = LazyLock::new(|| CallParams {
 });
 
 const DEFAULT_EVM_CALL_TTL: TimeDiff = TimeDiff::from_seconds(300);
-
-#[derive(Deserialize)]
-struct ChainspecEvmConfig {
-    evm: EvmConfig,
-}
 
 /// Call object accepted by `eth_call`.
 #[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize, JsonSchema)]
@@ -139,18 +135,6 @@ fn eth_u256_to_u128(value: EthU256) -> Result<u128, RpcError> {
             .try_into()
             .expect("slice should contain exactly sixteen bytes"),
     ))
-}
-
-async fn read_evm_config(node_client: &dyn NodeClient) -> Result<EvmConfig, RpcError> {
-    let chainspec = node_client
-        .read_chainspec_bytes()
-        .await
-        .map_err(internal_error)?;
-    let chainspec = std::str::from_utf8(chainspec.chainspec_bytes())
-        .map_err(|error| internal_error(format!("invalid chainspec bytes: {error}")))?;
-    let chainspec = toml::from_str::<ChainspecEvmConfig>(chainspec)
-        .map_err(|error| internal_error(format!("invalid chainspec toml: {error}")))?;
-    Ok(chainspec.evm)
 }
 
 fn new_evm_call_transaction(

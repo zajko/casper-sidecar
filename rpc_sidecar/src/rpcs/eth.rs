@@ -3,7 +3,9 @@
 mod block_number;
 mod call;
 mod chain_id;
+mod config;
 mod eth_u256;
+mod get_balance;
 mod get_block_by_number;
 mod get_filter_changes;
 mod get_filter_logs;
@@ -21,6 +23,7 @@ mod uninstall_filter;
 pub use block_number::BlockNumber;
 pub use call::Call;
 pub use chain_id::ChainId;
+pub use get_balance::GetBalance;
 pub use get_block_by_number::GetBlockByNumber;
 pub use get_filter_changes::GetFilterChanges;
 pub use get_filter_logs::GetFilterLogs;
