@@ -39,6 +39,7 @@ mod tests {
     use alloy_primitives::{Address as AlloyAddress, B256, Bytes as AlloyBytes, U256 as AlloyU256};
     use casper_binary_port::{BinaryResponse, BinaryResponseAndRequest, Command};
     use casper_types::{EvmTransactionKind, bytesrepr::Bytes};
+    use serde_json::json;
     use tokio::sync::Mutex;
 
     use super::*;
@@ -101,6 +102,39 @@ mod tests {
         };
         assert_eq!(accepted.kind(), EvmTransactionKind::Eip7702);
         assert_eq!(accepted.authorization_list(), expected.authorization_list());
+    }
+
+    #[tokio::test]
+    async fn preserves_metamask_zero_effective_tip_transaction() {
+        let raw_transaction = "0x02f87c84435350ff8087038d7ea4c6800087038d7ea4c6800082520894f802d29f3329059ad20096fe903ce88d4d4eeb8d88d02ab486cedc000080c080a0ee519cfed46878e49a8fef1d894fb70e5a88df775142241ff0931628b7a860a1a0694740f25e9d7f73f79597b282e0d1738c8d4dc9bf8aa264fab89fdbd463db60";
+        let params =
+            SendRawTransaction::try_parse_params(Some(Params::Array(vec![json!(raw_transaction)])))
+                .expect("captured MetaMask transaction should parse");
+        let node_client = Arc::new(ClientMock::default());
+
+        SendRawTransaction::do_handle_request(node_client.clone(), params)
+            .await
+            .expect("captured MetaMask transaction should be forwarded");
+
+        let accepted = node_client
+            .accepted
+            .lock()
+            .await
+            .take()
+            .expect("transaction should be sent to the node");
+        let Transaction::Evm(accepted) = accepted else {
+            panic!("expected an EVM transaction");
+        };
+        assert_eq!(accepted.kind(), EvmTransactionKind::Eip1559);
+        assert_eq!(accepted.max_fee_per_gas(), 1_000_000_000_000_000);
+        assert_eq!(
+            accepted.max_priority_fee_per_gas(),
+            Some(1_000_000_000_000_000)
+        );
+        assert_eq!(
+            accepted.effective_priority_fee_per_gas(1_000_000_000_000_000),
+            0
+        );
     }
 
     fn signed_eip7702_raw_transaction() -> Vec<u8> {

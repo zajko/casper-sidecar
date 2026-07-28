@@ -12,11 +12,14 @@ use super::rpcs::{
     },
     docs::RpcDiscover,
     eth::{
-        BlockNumber as EthBlockNumber, Call as EthCall, ChainId as EthChainId, EthFilterState,
-        GetBalance as EthGetBalance, GetBlockByNumber as EthGetBlockByNumber,
+        BlockNumber as EthBlockNumber, Call as EthCall, ChainId as EthChainId,
+        EstimateGas as EthEstimateGas, EthFilterState, FeeHistory as EthFeeHistory,
+        GasPrice as EthGasPrice, GetBalance as EthGetBalance, GetBlockByHash as EthGetBlockByHash,
+        GetBlockByNumber as EthGetBlockByNumber, GetCode as EthGetCode,
         GetFilterChanges as EthGetFilterChanges, GetFilterLogs as EthGetFilterLogs,
         GetLogs as EthGetLogs, GetTransactionCount as EthGetTransactionCount,
-        GetTransactionReceipt as EthGetTransactionReceipt, NetVersion as EthNetVersion,
+        GetTransactionReceipt as EthGetTransactionReceipt,
+        MaxPriorityFeePerGas as EthMaxPriorityFeePerGas, NetVersion as EthNetVersion,
         NewFilter as EthNewFilter, SendRawTransaction as EthSendRawTransaction,
         UninstallFilter as EthUninstallFilter,
     },
@@ -98,14 +101,20 @@ pub async fn run(
     register!(QueryBalanceDetails);
     register!(EthChainId);
     register!(EthNetVersion);
+    register!(EthGasPrice);
+    register!(EthMaxPriorityFeePerGas);
+    register!(EthFeeHistory);
     register!(EthBlockNumber);
+    register!(EthGetBlockByHash);
     register!(EthGetBlockByNumber);
     register!(EthGetBalance);
+    register!(EthGetCode);
     register!(EthGetTransactionCount);
     register!(EthSendRawTransaction);
     register!(EthGetTransactionReceipt);
     register_with_context!(EthGetLogs, node.clone(), max_eth_log_block_range);
     register!(EthCall);
+    register!(EthEstimateGas);
     register_with_context!(
         EthNewFilter,
         node.clone(),

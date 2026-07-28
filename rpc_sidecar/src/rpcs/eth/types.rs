@@ -150,7 +150,7 @@ impl Default for BlockTag {
     }
 }
 
-/// Block selector accepted by `eth_getBlockByNumber`.
+/// Ethereum block selector accepting either a named tag or a numeric height.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub(crate) enum BlockNumberParam {
@@ -158,6 +158,12 @@ pub(crate) enum BlockNumberParam {
     Tag(BlockTag),
     /// Concrete block height.
     Height(EthU256),
+}
+
+impl Default for BlockNumberParam {
+    fn default() -> Self {
+        BlockNumberParam::Tag(BlockTag::Latest)
+    }
 }
 
 impl BlockNumberParam {

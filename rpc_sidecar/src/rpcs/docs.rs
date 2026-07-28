@@ -21,10 +21,13 @@ use super::{
     },
     eth::{
         BlockNumber as EthBlockNumber, Call as EthCall, ChainId as EthChainId,
-        GetBalance as EthGetBalance, GetBlockByNumber as EthGetBlockByNumber,
+        EstimateGas as EthEstimateGas, FeeHistory as EthFeeHistory, GasPrice as EthGasPrice,
+        GetBalance as EthGetBalance, GetBlockByHash as EthGetBlockByHash,
+        GetBlockByNumber as EthGetBlockByNumber, GetCode as EthGetCode,
         GetFilterChanges as EthGetFilterChanges, GetFilterLogs as EthGetFilterLogs,
         GetLogs as EthGetLogs, GetTransactionCount as EthGetTransactionCount,
-        GetTransactionReceipt as EthGetTransactionReceipt, NetVersion as EthNetVersion,
+        GetTransactionReceipt as EthGetTransactionReceipt,
+        MaxPriorityFeePerGas as EthMaxPriorityFeePerGas, NetVersion as EthNetVersion,
         NewFilter as EthNewFilter, SendRawTransaction as EthSendRawTransaction,
         UninstallFilter as EthUninstallFilter,
     },
@@ -114,9 +117,18 @@ fn build_open_rpc_schema() -> OpenRpcSchema {
     schema.push_without_params::<EthNetVersion>(
         "returns the configured EVM network ID as a decimal string",
     );
+    schema.push_without_params::<EthGasPrice>("returns the configured EVM base fee in wei");
+    schema.push_without_params::<EthMaxPriorityFeePerGas>(
+        "returns zero because Casper does not prioritize transactions by proposer tips",
+    );
+    schema.push_with_params::<EthFeeHistory>(
+        "returns historical EVM base fees, gas usage ratios, and priority-fee rewards",
+    );
     schema.push_without_params::<EthBlockNumber>("returns the latest block height");
+    schema.push_with_params::<EthGetBlockByHash>("returns an Ethereum-compatible block by hash");
     schema.push_with_params::<EthGetBlockByNumber>("returns an Ethereum-compatible block");
     schema.push_with_params::<EthGetBalance>("returns an EVM account balance in wei");
+    schema.push_with_params::<EthGetCode>("returns EVM bytecode stored at an address");
     schema.push_with_params::<EthGetTransactionCount>("returns an EVM account nonce");
     schema.push_with_params::<EthSendRawTransaction>(
         "submits a signed Ethereum transaction as a Casper EVM transaction",
@@ -134,6 +146,7 @@ fn build_open_rpc_schema() -> OpenRpcSchema {
     );
     schema.push_with_params::<EthUninstallFilter>("removes a process-local Ethereum log filter");
     schema.push_with_params::<EthCall>("executes a read-only EVM call");
+    schema.push_with_params::<EthEstimateGas>("estimates gas using speculative EVM execution");
     schema.push_with_optional_params::<GetBlock>("returns a Block from the network");
     schema.push_with_optional_params::<GetBlockTransfers>(
         "returns all transfers for a Block from the network",
@@ -672,7 +685,43 @@ mod tests {
             schema
                 .methods
                 .iter()
+                .any(|method| method.name == "eth_getBlockByHash")
+        );
+        assert!(
+            schema
+                .methods
+                .iter()
+                .any(|method| method.name == "eth_getCode")
+        );
+        assert!(
+            schema
+                .methods
+                .iter()
                 .any(|method| method.name == "net_version")
+        );
+        assert!(
+            schema
+                .methods
+                .iter()
+                .any(|method| method.name == "eth_gasPrice")
+        );
+        assert!(
+            schema
+                .methods
+                .iter()
+                .any(|method| method.name == "eth_maxPriorityFeePerGas")
+        );
+        assert!(
+            schema
+                .methods
+                .iter()
+                .any(|method| method.name == "eth_feeHistory")
+        );
+        assert!(
+            schema
+                .methods
+                .iter()
+                .any(|method| method.name == "eth_estimateGas")
         );
         serde_json::to_string(&schema).expect("OpenRPC schema should serialize");
     }

@@ -168,7 +168,10 @@ pub trait NodeClient: Send + Sync {
         &self,
         transaction: Transaction,
     ) -> Result<SpeculativeExecutionResult, Error> {
-        let request = Command::TrySpeculativeExec { transaction };
+        let request = Command::TrySpeculativeExec {
+            transaction,
+            block_identifier: None,
+        };
         let resp = self.send_request(request).await?;
         parse_response::<SpeculativeExecutionResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
@@ -176,12 +179,17 @@ pub trait NodeClient: Send + Sync {
     async fn evm_call(
         &self,
         transaction: EvmTransaction,
+        block_identifier: Option<BlockIdentifier>,
     ) -> Result<EvmSpeculativeExecutionResult, Error> {
         let resp = self
             .send_request(Command::TrySpeculativeExec {
                 transaction: Transaction::Evm(Box::new(transaction)),
+                block_identifier,
             })
             .await?;
+        if resp.response().is_not_found() {
+            return Err(Error::NotFound);
+        }
         parse_response::<EvmSpeculativeExecutionResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
@@ -470,6 +478,12 @@ pub enum InvalidTransactionOrDeploy {
     /// The EVM transaction nonce did not match the account nonce.
     #[error("The EVM transaction nonce does not match the account nonce")]
     TransactionEvmInvalidNonce,
+    /// The EVM transaction has a positive effective priority fee per gas.
+    #[error("The EVM transaction effective priority fee per gas is unsupported")]
+    TransactionEvmPositiveEffectivePriorityFeePerGas,
+    /// The EVM transaction maximum priority fee exceeds its maximum total fee.
+    #[error("The EVM transaction max priority fee per gas exceeds its max fee per gas")]
+    TransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas,
     /// The transaction initiator address is invalid.
     #[error("The transaction initiator address is invalid")]
     TransactionInvalidInitiatorAddr,
@@ -667,6 +681,12 @@ impl From<ErrorCode> for InvalidTransactionOrDeploy {
             }
             ErrorCode::InvalidTransactionPricingMode => Self::TransactionPricingMode,
             ErrorCode::InvalidTransactionEvmInvalidNonce => Self::TransactionEvmInvalidNonce,
+            ErrorCode::InvalidTransactionEvmPositiveEffectivePriorityFeePerGas => {
+                Self::TransactionEvmPositiveEffectivePriorityFeePerGas
+            }
+            ErrorCode::InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas => {
+                Self::TransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas
+            }
             ErrorCode::InvalidTransactionInvalidInitiatorAddr => {
                 Self::TransactionInvalidInitiatorAddr
             }
@@ -885,6 +905,8 @@ impl Error {
                 | ErrorCode::InvalidTransactionUnableToCalculateGasCost
                 | ErrorCode::InvalidTransactionPricingMode
                 | ErrorCode::InvalidTransactionEvmInvalidNonce
+                | ErrorCode::InvalidTransactionEvmPositiveEffectivePriorityFeePerGas
+                | ErrorCode::InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas
                 | ErrorCode::InvalidTransactionInvalidInitiatorAddr
                 | ErrorCode::EmptyBlockchain
                 | ErrorCode::ExpectedDeploy
@@ -989,7 +1011,7 @@ impl<T> Notify<T> {
         })
     }
 
-    fn notified(&self) -> Notified {
+    fn notified(&self) -> Notified<'_> {
         self.inner.notified()
     }
 
@@ -1404,7 +1426,7 @@ where
     T: std::error::Error,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut opt_source: Option<&(dyn std::error::Error)> = Some(self.0);
+        let mut opt_source: Option<&dyn std::error::Error> = Some(self.0);
 
         while let Some(source) = opt_source {
             write!(f, "{source}")?;
@@ -1763,6 +1785,22 @@ mod tests {
         assert!(matches!(
             Error::from_error_code(ErrorCode::InvalidTransactionEvmInvalidNonce as u16),
             Error::InvalidTransaction(InvalidTransactionOrDeploy::TransactionEvmInvalidNonce)
+        ));
+        assert!(matches!(
+            Error::from_error_code(
+                ErrorCode::InvalidTransactionEvmPositiveEffectivePriorityFeePerGas as u16
+            ),
+            Error::InvalidTransaction(
+                InvalidTransactionOrDeploy::TransactionEvmPositiveEffectivePriorityFeePerGas
+            )
+        ));
+        assert!(matches!(
+            Error::from_error_code(
+                ErrorCode::InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas as u16
+            ),
+            Error::InvalidTransaction(
+                InvalidTransactionOrDeploy::TransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas
+            )
         ));
         assert!(matches!(
             Error::from_error_code(ErrorCode::InvalidTransactionInvalidInitiatorAddr as u16),

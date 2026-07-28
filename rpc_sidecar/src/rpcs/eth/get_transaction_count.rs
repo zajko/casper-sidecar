@@ -2,21 +2,21 @@ use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use casper_json_rpc::{Error as RpcError, Params};
-use casper_types::{EvmAddr, Key, StoredValue, evm};
+use casper_types::{EvmAddr, GlobalStateIdentifier, Key, StoredValue, evm};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
     super::{NodeClient, RpcWithParams},
     eth_u256::EthU256,
-    types::{BlockTag, EthAddress, internal_error, parse_positional_params},
+    types::{BlockNumberParam, BlockTag, EthAddress, internal_error, parse_positional_params},
 };
 use crate::rpcs::docs::DocExample;
 
 static GET_TRANSACTION_COUNT_PARAMS_EXAMPLE: LazyLock<GetTransactionCountParams> =
     LazyLock::new(|| GetTransactionCountParams {
         address: EthAddress::from(evm::Address::ZERO),
-        block: BlockTag::Latest,
+        block: BlockNumberParam::Tag(BlockTag::Latest),
     });
 
 /// Params for `eth_getTransactionCount`.
@@ -25,12 +25,18 @@ static GET_TRANSACTION_COUNT_PARAMS_EXAMPLE: LazyLock<GetTransactionCountParams>
 pub(crate) struct GetTransactionCountParams {
     address: EthAddress,
     #[serde(default)]
-    block: BlockTag,
+    block: BlockNumberParam,
 }
 
 impl GetTransactionCountParams {
     fn address(&self) -> evm::Address {
         self.address.into_inner()
+    }
+
+    fn state_identifier(&self) -> Result<Option<GlobalStateIdentifier>, RpcError> {
+        self.block
+            .identifier()
+            .map(|maybe_identifier| maybe_identifier.map(GlobalStateIdentifier::from))
     }
 }
 
@@ -41,7 +47,7 @@ impl DocExample for GetTransactionCountParams {
 }
 
 #[derive(Deserialize)]
-struct PositionalParams(EthAddress, #[serde(default)] BlockTag);
+struct PositionalParams(EthAddress, #[serde(default)] BlockNumberParam);
 
 impl From<PositionalParams> for GetTransactionCountParams {
     fn from(params: PositionalParams) -> Self {
@@ -70,8 +76,9 @@ impl RpcWithParams for GetTransactionCount {
         params: GetTransactionCountParams,
     ) -> Result<EthU256, RpcError> {
         let address = params.address();
+        let state_identifier = params.state_identifier()?;
         let maybe_value = node_client
-            .query_global_state(None, Key::Evm(EvmAddr::Nonce(address)), vec![])
+            .query_global_state(state_identifier, Key::Evm(EvmAddr::Nonce(address)), vec![])
             .await
             .map_err(internal_error)?;
         let nonce = match maybe_value.map(|value| value.into_inner().0) {
@@ -100,12 +107,15 @@ mod tests {
     use super::*;
     use crate::rpcs::test_utils::BinaryPortMock;
 
+    const BLOCK_HEIGHT: u64 = 63;
+
     #[tokio::test]
-    async fn get_transaction_count_reads_evm_nonce() {
+    async fn get_transaction_count_reads_evm_nonce_at_numeric_height() {
         let client = BinaryPortMock::new();
         let address = evm::Address::new([1; evm::ADDRESS_LENGTH]);
+        let state_identifier = Some(GlobalStateIdentifier::BlockHeight(BLOCK_HEIGHT));
         let request = GlobalStateRequest::new(
-            None,
+            state_identifier,
             GlobalStateEntityQualifier::Item {
                 base_key: Key::Evm(EvmAddr::Nonce(address)),
                 path: Vec::new(),
@@ -125,12 +135,32 @@ mod tests {
             Arc::new(client),
             GetTransactionCountParams {
                 address: EthAddress::from(address),
-                block: BlockTag::Latest,
+                block: BlockNumberParam::Height(BLOCK_HEIGHT.into()),
             },
         )
         .await
         .expect("nonce lookup should succeed");
 
         assert_eq!(result, EthU256::from(12u64));
+    }
+
+    #[test]
+    fn parses_metamask_numeric_block_height() {
+        let address = evm::Address::new([1; evm::ADDRESS_LENGTH]);
+        let params = Params::Array(vec![
+            serde_json::json!(String::from(EthAddress::from(address))),
+            serde_json::json!("0x3f"),
+        ]);
+
+        let parsed = GetTransactionCount::try_parse_params(Some(params))
+            .expect("numeric block height should parse");
+
+        assert_eq!(
+            parsed,
+            GetTransactionCountParams {
+                address: address.into(),
+                block: BlockNumberParam::Height(BLOCK_HEIGHT.into()),
+            }
+        );
     }
 }

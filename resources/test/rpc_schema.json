@@ -1865,6 +1865,165 @@
       ]
     },
     {
+      "name": "eth_gasPrice",
+      "summary": "returns the configured EVM base fee in wei",
+      "params": [],
+      "result": {
+        "name": "eth_gasPrice_result",
+        "schema": {
+          "description": "Ethereum JSON-RPC quantity encoded as canonical 0x-prefixed hexadecimal.",
+          "type": "string"
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_gasPrice_example",
+          "params": [],
+          "result": {
+            "name": "eth_gasPrice_example_result",
+            "value": "0x0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_maxPriorityFeePerGas",
+      "summary": "returns zero because Casper does not prioritize transactions by proposer tips",
+      "params": [],
+      "result": {
+        "name": "eth_maxPriorityFeePerGas_result",
+        "schema": {
+          "description": "Ethereum JSON-RPC quantity encoded as canonical 0x-prefixed hexadecimal.",
+          "type": "string"
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_maxPriorityFeePerGas_example",
+          "params": [],
+          "result": {
+            "name": "eth_maxPriorityFeePerGas_example_result",
+            "value": "0x0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_feeHistory",
+      "summary": "returns historical EVM base fees, gas usage ratios, and priority-fee rewards",
+      "params": [
+        {
+          "name": "block_count",
+          "schema": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "required": true
+        },
+        {
+          "name": "newest_block",
+          "schema": {
+            "$ref": "#/components/schemas/BlockNumberParam"
+          },
+          "required": true
+        },
+        {
+          "name": "reward_percentiles",
+          "schema": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "eth_feeHistory_result",
+        "schema": {
+          "description": "Fee history for the requested block range.",
+          "type": "object",
+          "required": [
+            "baseFeePerGas",
+            "gasUsedRatio",
+            "oldestBlock"
+          ],
+          "properties": {
+            "oldestBlock": {
+              "$ref": "#/components/schemas/EthU256"
+            },
+            "baseFeePerGas": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/EthU256"
+              }
+            },
+            "gasUsedRatio": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              }
+            },
+            "reward": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/EthU256"
+                }
+              }
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_feeHistory_example",
+          "params": [
+            {
+              "name": "block_count",
+              "value": "0x1"
+            },
+            {
+              "name": "newest_block",
+              "value": "latest"
+            },
+            {
+              "name": "reward_percentiles",
+              "value": [
+                25.0,
+                75.0
+              ]
+            }
+          ],
+          "result": {
+            "name": "eth_feeHistory_example_result",
+            "value": {
+              "oldestBlock": "0x1",
+              "baseFeePerGas": [
+                "0x0",
+                "0x0"
+              ],
+              "gasUsedRatio": [
+                0.0
+              ],
+              "reward": [
+                [
+                  "0x0",
+                  "0x0"
+                ]
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "eth_blockNumber",
       "summary": "returns the latest block height",
       "params": [],
@@ -1882,6 +2041,58 @@
           "result": {
             "name": "eth_blockNumber_example_result",
             "value": "0x0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_getBlockByHash",
+      "summary": "returns an Ethereum-compatible block by hash",
+      "params": [
+        {
+          "name": "block_hash",
+          "schema": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "required": true
+        },
+        {
+          "name": "full_transactions",
+          "schema": {
+            "type": "boolean"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getBlockByHash_result",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/BlockResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getBlockByHash_example",
+          "params": [
+            {
+              "name": "block_hash",
+              "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            {
+              "name": "full_transactions",
+              "value": false
+            }
+          ],
+          "result": {
+            "name": "eth_getBlockByHash_example_result",
+            "value": null
           }
         }
       ]
@@ -1985,6 +2196,51 @@
       ]
     },
     {
+      "name": "eth_getCode",
+      "summary": "returns EVM bytecode stored at an address",
+      "params": [
+        {
+          "name": "address",
+          "schema": {
+            "$ref": "#/components/schemas/EthAddress"
+          },
+          "required": true
+        },
+        {
+          "name": "block",
+          "schema": {
+            "$ref": "#/components/schemas/BlockNumberParam"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getCode_result",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getCode_example",
+          "params": [
+            {
+              "name": "address",
+              "value": "0x0000000000000000000000000000000000000000"
+            },
+            {
+              "name": "block",
+              "value": "latest"
+            }
+          ],
+          "result": {
+            "name": "eth_getCode_example_result",
+            "value": "0x"
+          }
+        }
+      ]
+    },
+    {
       "name": "eth_getTransactionCount",
       "summary": "returns an EVM account nonce",
       "params": [
@@ -1999,7 +2255,7 @@
           "name": "block",
           "schema": {
             "default": "latest",
-            "$ref": "#/components/schemas/BlockTag"
+            "$ref": "#/components/schemas/BlockNumberParam"
           },
           "required": false
         }
@@ -2482,7 +2738,7 @@
           "name": "block",
           "schema": {
             "default": "latest",
-            "$ref": "#/components/schemas/BlockTag"
+            "$ref": "#/components/schemas/CallBlockParam"
           },
           "required": false
         }
@@ -2517,6 +2773,49 @@
           "result": {
             "name": "eth_call_example_result",
             "value": "0x"
+          }
+        }
+      ]
+    },
+    {
+      "name": "eth_estimateGas",
+      "summary": "estimates gas using speculative EVM execution",
+      "params": [
+        {
+          "name": "call",
+          "schema": {
+            "$ref": "#/components/schemas/CallObject"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_estimateGas_result",
+        "schema": {
+          "description": "Ethereum JSON-RPC quantity encoded as canonical 0x-prefixed hexadecimal.",
+          "type": "string"
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_estimateGas_example",
+          "params": [
+            {
+              "name": "call",
+              "value": {
+                "from": null,
+                "to": null,
+                "data": null,
+                "input": null,
+                "value": null,
+                "gas": null,
+                "gasPrice": null
+              }
+            }
+          ],
+          "result": {
+            "name": "eth_estimateGas_example_result",
+            "value": "0x0"
           }
         }
       ]
@@ -8096,7 +8395,7 @@
             "minimum": 0.0
           },
           "effective_gas_price": {
-            "description": "Effective gas price used for Ethereum receipt projection and Casper EVM fee accounting.\n\nFor accepted EIP-1559 transactions this is the configured EVM base fee capped by `max_fee_per_gas`, since non-zero priority fees are rejected while Casper does not prioritize transactions based on transaction gas parameters.",
+            "description": "Effective gas price used for Ethereum receipt projection and Casper EVM fee accounting.\n\nFor accepted EIP-1559 transactions this is the configured EVM base fee capped by `max_fee_per_gas`. Transactions with a positive effective priority fee are rejected because Casper does not prioritize transactions based on transaction gas parameters.",
             "type": "integer",
             "format": "uint128",
             "minimum": 0.0
@@ -9739,8 +10038,12 @@
           }
         }
       },
+      "EthU256": {
+        "description": "Ethereum JSON-RPC quantity encoded as canonical 0x-prefixed hexadecimal.",
+        "type": "string"
+      },
       "BlockNumberParam": {
-        "description": "Block selector accepted by `eth_getBlockByNumber`.",
+        "description": "Ethereum block selector accepting either a named tag or a numeric height.",
         "anyOf": [
           {
             "description": "Latest block known by the node.",
@@ -9800,12 +10103,12 @@
           }
         ]
       },
-      "EthU256": {
-        "description": "Ethereum JSON-RPC quantity encoded as canonical 0x-prefixed hexadecimal.",
+      "EvmHash": {
+        "description": "A 32-byte EVM hash encoded as 0x-prefixed hexadecimal.",
         "type": "string"
       },
       "BlockResponse": {
-        "description": "Ethereum block response returned by `eth_getBlockByNumber`.",
+        "description": "Ethereum block response returned by block lookup RPCs.",
         "type": "object",
         "required": [
           "baseFeePerGas",
@@ -9911,10 +10214,6 @@
             "$ref": "#/components/schemas/EthU256"
           }
         }
-      },
-      "EvmHash": {
-        "description": "A 32-byte EVM hash encoded as 0x-prefixed hexadecimal.",
-        "type": "string"
       },
       "EthHexData": {
         "type": "string"
@@ -10075,7 +10374,7 @@
         ]
       },
       "CallObject": {
-        "description": "Call object accepted by `eth_call`.",
+        "description": "Call object accepted by `eth_call` and `eth_estimateGas`.",
         "type": "object",
         "properties": {
           "from": {
@@ -10149,6 +10448,44 @@
             ]
           }
         }
+      },
+      "CallBlockParam": {
+        "description": "Block selector accepted by `eth_call`.",
+        "anyOf": [
+          {
+            "description": "A block height or named tag.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlockNumberParam"
+              }
+            ]
+          },
+          {
+            "description": "An EIP-1898 block hash selector.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CallBlockHashParam"
+              }
+            ]
+          }
+        ]
+      },
+      "CallBlockHashParam": {
+        "type": "object",
+        "required": [
+          "blockHash"
+        ],
+        "properties": {
+          "blockHash": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "requireCanonical": {
+            "description": "Accepted for EIP-1898 compatibility. Speculative execution only resolves complete blocks.",
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
       },
       "JsonBlockWithSignatures": {
         "description": "A JSON-friendly representation of a block and the signatures for that block.",

@@ -2,17 +2,17 @@ use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use casper_json_rpc::{Error as RpcError, Params};
-use casper_types::evm;
+use casper_types::{BlockIdentifier, evm};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
     super::{NodeClient, RpcWithParams},
+    config::read_evm_config,
     eth_u256::EthU256,
     projection::project_block,
     types::{
-        BlockNumberParam, BlockTag, DEFAULT_ETH_CALL_GAS_LIMIT, EthAddress, HexData,
-        invalid_params, parse_positional_params,
+        BlockNumberParam, BlockTag, EthAddress, HexData, invalid_params, parse_positional_params,
     },
 };
 use crate::rpcs::docs::DocExample;
@@ -60,7 +60,7 @@ impl From<PositionalParams> for GetBlockByNumberParams {
     }
 }
 
-/// Ethereum block response returned by `eth_getBlockByNumber`.
+/// Ethereum block response returned by block lookup RPCs.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BlockResponse {
@@ -97,6 +97,40 @@ impl DocExample for Option<BlockResponse> {
 /// `eth_getBlockByNumber`.
 pub struct GetBlockByNumber;
 
+pub(super) async fn get_block(
+    node_client: Arc<dyn NodeClient>,
+    identifier: Option<BlockIdentifier>,
+) -> Result<Option<BlockResponse>, RpcError> {
+    let evm_config = read_evm_config(node_client.as_ref()).await?;
+    let Some(block) = project_block(node_client, identifier).await? else {
+        return Ok(None);
+    };
+    Ok(Some(BlockResponse {
+        number: block.number,
+        hash: block.hash,
+        parent_hash: block.parent_hash,
+        parent_beacon_block_root: block.parent_beacon_block_root,
+        nonce: Some(HexData::from(vec![0; 8])),
+        mix_hash: evm::Hash::ZERO,
+        sha3_uncles: evm::EMPTY_CODE_HASH,
+        logs_bloom: block.logs_bloom,
+        transactions_root: block.transactions_root,
+        state_root: block.state_root,
+        receipts_root: block.receipts_root,
+        miner: block.miner,
+        difficulty: EthU256::from(0u8),
+        total_difficulty: EthU256::from(0u8),
+        extra_data: HexData::from(Vec::new()),
+        size: EthU256::from(0u8),
+        gas_limit: EthU256::from(evm_config.block_gas_limit),
+        gas_used: block.gas_used,
+        timestamp: block.timestamp,
+        transactions: block.transactions,
+        uncles: Vec::new(),
+        base_fee_per_gas: EthU256::from(evm_config.base_fee_wei()),
+    }))
+}
+
 #[async_trait]
 impl RpcWithParams for GetBlockByNumber {
     const METHOD: &'static str = "eth_getBlockByNumber";
@@ -118,33 +152,7 @@ impl RpcWithParams for GetBlockByNumber {
                 "full transaction objects are not supported yet",
             ));
         }
-        let Some(block) = project_block(node_client, params.identifier()?).await? else {
-            return Ok(None);
-        };
-        Ok(Some(BlockResponse {
-            number: block.number,
-            hash: block.hash,
-            parent_hash: block.parent_hash,
-            parent_beacon_block_root: block.parent_beacon_block_root,
-            nonce: Some(HexData::from(vec![0; 8])),
-            mix_hash: evm::Hash::ZERO,
-            sha3_uncles: evm::EMPTY_CODE_HASH,
-            logs_bloom: block.logs_bloom,
-            transactions_root: block.transactions_root,
-            state_root: block.state_root,
-            receipts_root: block.receipts_root,
-            miner: block.miner,
-            difficulty: EthU256::from(0u8),
-            total_difficulty: EthU256::from(0u8),
-            extra_data: HexData::from(Vec::new()),
-            size: EthU256::from(0u8),
-            gas_limit: EthU256::from(DEFAULT_ETH_CALL_GAS_LIMIT),
-            gas_used: block.gas_used,
-            timestamp: block.timestamp,
-            transactions: block.transactions,
-            uncles: Vec::new(),
-            base_fee_per_gas: EthU256::from(0u8),
-        }))
+        get_block(node_client, params.identifier()?).await
     }
 }
 
@@ -152,10 +160,11 @@ impl RpcWithParams for GetBlockByNumber {
 mod tests {
     use std::sync::Arc;
 
-    use casper_binary_port::InformationRequest;
+    use casper_binary_port::{BinaryResponse, Command, InformationRequest};
     use casper_json_rpc::ReservedErrorCode;
     use casper_types::{
-        Block, BlockSignatures, BlockWithSignatures, TestBlockBuilder, testing::TestRng,
+        Block, BlockSignatures, BlockWithSignatures, ChainspecRawBytes, TestBlockBuilder,
+        testing::TestRng,
     };
     use serde_json::json;
 
@@ -191,6 +200,7 @@ mod tests {
             block.proposer(),
         ));
         let node_client = Arc::new(BinaryPortMock::new());
+        add_chainspec(&node_client).await;
         node_client
             .add_block_with_signatures(
                 BlockWithSignatures::new(block, BlockSignatures::random(rng)),
@@ -210,6 +220,8 @@ mod tests {
         .expect("block should be returned");
 
         assert_eq!(response.miner, expected_miner);
+        assert_eq!(response.base_fee_per_gas, EthU256::from(3_000_000_000u64));
+        assert_eq!(response.gas_limit, EthU256::from(12_345_678u64));
         node_client.verify_no_lingering().await;
     }
 
@@ -233,7 +245,7 @@ mod tests {
             total_difficulty: EthU256::from(0u8),
             extra_data: HexData::from(Vec::new()),
             size: EthU256::from(0u8),
-            gas_limit: EthU256::from(DEFAULT_ETH_CALL_GAS_LIMIT),
+            gas_limit: EthU256::from(30_000_000u64),
             gas_used: EthU256::from(0u8),
             timestamp: EthU256::from(1u8),
             transactions: Vec::new(),
@@ -249,5 +261,29 @@ mod tests {
         );
         assert_eq!(value["parentBeaconBlockRoot"], value["parentHash"]);
         assert_ne!(value["parentBeaconBlockRoot"], json!(null));
+    }
+
+    async fn add_chainspec(client: &BinaryPortMock) {
+        let request = InformationRequest::ChainspecRawBytes
+            .try_into()
+            .expect("chainspec information request should convert");
+        let chainspec = ChainspecRawBytes::new(
+            br#"
+[evm]
+enabled = true
+chain_id = 7
+spec = "prague"
+block_gas_limit = 12345678
+base_fee = 3
+wei_per_mote = 1000000000
+"#
+            .to_vec()
+            .into(),
+            None,
+            None,
+        );
+        client
+            .when_then(Command::Get(request), BinaryResponse::from_value(chainspec))
+            .await;
     }
 }
