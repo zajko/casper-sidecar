@@ -2,16 +2,12 @@ use std::fmt::{self, Display, Formatter};
 
 use serde_json::{Map, Value};
 
-use super::ErrorOrRejection;
 use crate::error::{Error, ReservedErrorCode};
 
 /// The "params" field of a JSON-RPC request.
 ///
 /// As per [the JSON-RPC specification](https://www.jsonrpc.org/specification#parameter_structures),
 /// if present these must be a JSON Array or Object.
-///
-/// **NOTE:** Currently we treat '"params": null' as '"params": []', but this deviation from the
-/// standard will be removed in an upcoming release, and `null` will become an invalid value.
 ///
 /// `Params` is effectively a restricted [`serde_json::Value`], and can be converted to a `Value`
 /// using `Value::from()` if required.
@@ -25,17 +21,18 @@ pub enum Params {
 
 impl Params {
     #[allow(clippy::result_large_err)]
-    pub(super) fn try_from(request_id: &Value, params: Value) -> Result<Self, ErrorOrRejection> {
+    pub(super) fn try_from(params: Value) -> Result<Self, Error> {
         let err_invalid_request = |additional_info: &str| {
-            let error = Error::new(ReservedErrorCode::InvalidRequest, additional_info);
-            Err(ErrorOrRejection::Error {
-                id: request_id.clone(),
-                error,
-            })
+            Err(Error::new(
+                ReservedErrorCode::InvalidRequest,
+                additional_info,
+            ))
         };
 
         match params {
-            Value::Null => Ok(Params::Array(Vec::new())),
+            Value::Null => {
+                err_invalid_request("If present, 'params' must be an Array or Object, but was null")
+            }
             Value::Bool(false) => err_invalid_request(
                 "If present, 'params' must be an Array or Object, but was 'false'",
             ),
@@ -137,74 +134,79 @@ impl From<Params> for Value {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
-    fn should_fail_to_convert_invalid_params(bad_params: Value, expected_invalid_type_msg: &str) {
-        let original_id = Value::from(1_i8);
-        match Params::try_from(&original_id, bad_params).unwrap_err() {
-            ErrorOrRejection::Error { id, error } => {
-                assert_eq!(id, original_id);
-                let expected_error = format!(
-                    r#"{{"code":-32600,"message":"Invalid Request","data":"If present, 'params' must be an Array or Object, but was {}"}}"#,
-                    expected_invalid_type_msg
-                );
-                assert_eq!(serde_json::to_string(&error).unwrap(), expected_error);
-            }
-            other => panic!("unexpected: {:?}", other),
-        }
+    fn should_fail_to_convert_invalid_params(bad_params: Value, expected_data: &str) {
+        let error = Params::try_from(bad_params).unwrap_err();
+        assert_eq!(
+            serde_json::to_value(error).unwrap(),
+            json!({
+                "code": -32600,
+                "message": "Invalid Request",
+                "data": expected_data,
+            })
+        );
     }
 
     #[test]
-    fn should_convert_params_from_null() {
-        let original_id = Value::from(1_i8);
-
-        let params = Params::try_from(&original_id, Value::Null).unwrap();
-        assert!(matches!(params, Params::Array(v) if v.is_empty()));
+    fn should_fail_to_convert_params_from_null() {
+        should_fail_to_convert_invalid_params(
+            json!(null),
+            "If present, 'params' must be an Array or Object, but was null",
+        );
     }
 
     #[test]
     fn should_fail_to_convert_params_from_false() {
-        should_fail_to_convert_invalid_params(Value::Bool(false), "'false'");
+        should_fail_to_convert_invalid_params(
+            json!(false),
+            "If present, 'params' must be an Array or Object, but was 'false'",
+        );
     }
 
     #[test]
     fn should_fail_to_convert_params_from_true() {
-        should_fail_to_convert_invalid_params(Value::Bool(true), "'true'");
+        should_fail_to_convert_invalid_params(
+            json!(true),
+            "If present, 'params' must be an Array or Object, but was 'true'",
+        );
     }
 
     #[test]
     fn should_fail_to_convert_params_from_a_number() {
-        should_fail_to_convert_invalid_params(Value::from(9_u8), "a Number");
+        should_fail_to_convert_invalid_params(
+            json!(9),
+            "If present, 'params' must be an Array or Object, but was a Number",
+        );
     }
 
     #[test]
     fn should_fail_to_convert_params_from_a_string() {
-        should_fail_to_convert_invalid_params(Value::from("s"), "a String");
+        should_fail_to_convert_invalid_params(
+            json!("s"),
+            "If present, 'params' must be an Array or Object, but was a String",
+        );
     }
 
     #[test]
     fn should_convert_params_from_an_array() {
-        let original_id = Value::from(1_i8);
-
-        let params = Params::try_from(&original_id, Value::Array(Vec::new())).unwrap();
+        let params = Params::try_from(json!([])).unwrap();
         assert!(matches!(params, Params::Array(v) if v.is_empty()));
 
-        let array = vec![Value::from(9_i16), Value::Bool(false)];
-        let params = Params::try_from(&original_id, Value::Array(array.clone())).unwrap();
+        let array = json!([9, false]).as_array().unwrap().clone();
+        let params = Params::try_from(json!(array.clone())).unwrap();
         assert!(matches!(params, Params::Array(v) if v == array));
     }
 
     #[test]
     fn should_convert_params_from_an_object() {
-        let original_id = Value::from(1_i8);
-
-        let params = Params::try_from(&original_id, Value::Object(Map::new())).unwrap();
+        let params = Params::try_from(json!({})).unwrap();
         assert!(matches!(params, Params::Object(v) if v.is_empty()));
 
-        let mut map = Map::new();
-        map.insert("a".to_string(), Value::from(9_i16));
-        map.insert("b".to_string(), Value::Bool(false));
-        let params = Params::try_from(&original_id, Value::Object(map.clone())).unwrap();
+        let map = json!({ "a": 9, "b": false }).as_object().unwrap().clone();
+        let params = Params::try_from(json!(map.clone())).unwrap();
         assert!(matches!(params, Params::Object(v) if v == map));
     }
 }

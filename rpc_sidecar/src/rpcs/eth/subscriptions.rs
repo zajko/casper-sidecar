@@ -4,20 +4,23 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use casper_event_types::SidecarEvent;
 use casper_json_rpc::{
-    CorsOrigin, Error as RpcError, RequestHandlers, ReservedErrorCode, Response,
-    handle_json_request_bytes,
+    CorsOrigin, Error as RpcError, JsonRpcOptions, MethodLimiter, Notification, Params,
+    RequestDispatcher, RequestHandlers, handle_json_request_bytes,
 };
 use futures::{SinkExt, StreamExt};
+use metrics::rpc::{inc_method_call, observe_response_time, register_request_size};
+use serde::Serialize;
 use serde_json::{Value, json};
 use tokio::{
     sync::{
         broadcast::{Receiver as BroadcastReceiver, Sender as BroadcastSender, error::RecvError},
         mpsc::{self, UnboundedSender},
+        oneshot,
     },
     task::JoinHandle,
     time::sleep,
@@ -42,37 +45,49 @@ use super::{
 use crate::rpcs::NodeClient;
 
 const LOGS_SUBSCRIPTION: &str = "logs";
+pub(crate) const SUBSCRIBE_METHOD: &str = "eth_subscribe";
+pub(crate) const UNSUBSCRIBE_METHOD: &str = "eth_unsubscribe";
 const LOG_FETCH_RETRY_ATTEMPTS: usize = 10;
 const LOG_FETCH_RETRY_DELAY: Duration = Duration::from_secs(1);
 const LOG_BACKFILL_BLOCK_DELAY: Duration = Duration::from_millis(25);
 
 static NEXT_SUBSCRIPTION_ID: AtomicU64 = AtomicU64::new(1);
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn websocket_route(
     api_path: &'static str,
     handlers: RequestHandlers,
     node_client: Arc<dyn NodeClient>,
     sidecar_event_sender: BroadcastSender<SidecarEvent>,
-    allow_unknown_fields: bool,
+    json_rpc_options: JsonRpcOptions,
     origin_policy: WebSocketOriginPolicy,
     max_eth_log_block_range: u64,
+    max_body_bytes: u64,
+    subscribe_limiter: MethodLimiter,
+    unsubscribe_limiter: MethodLimiter,
 ) -> BoxedFilter<(reply::Response,)> {
+    let max_message_size = usize::try_from(max_body_bytes).unwrap_or(usize::MAX);
     warp::path::path(api_path)
         .and(warp::path::end())
         .and(warp::ws())
         .and(websocket_origin_filter(origin_policy))
         .map(move |ws: warp::ws::Ws| {
+            let ws = ws.max_message_size(max_message_size);
             let handlers = handlers.clone();
             let node_client = node_client.clone();
             let sidecar_event_sender = sidecar_event_sender.clone();
+            let subscribe_limiter = subscribe_limiter.clone();
+            let unsubscribe_limiter = unsubscribe_limiter.clone();
             ws.on_upgrade(move |websocket| {
                 handle_websocket(
                     websocket,
                     handlers,
                     node_client,
                     sidecar_event_sender,
-                    allow_unknown_fields,
+                    json_rpc_options,
                     max_eth_log_block_range,
+                    subscribe_limiter,
+                    unsubscribe_limiter,
                 )
             })
             .into_response()
@@ -138,34 +153,60 @@ async fn handle_websocket_rejection(error: Rejection) -> Result<reply::Response,
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_websocket(
     websocket: WebSocket,
     handlers: RequestHandlers,
     node_client: Arc<dyn NodeClient>,
     sidecar_event_sender: BroadcastSender<SidecarEvent>,
-    allow_unknown_fields: bool,
+    json_rpc_options: JsonRpcOptions,
     max_eth_log_block_range: u64,
+    subscribe_limiter: MethodLimiter,
+    unsubscribe_limiter: MethodLimiter,
 ) {
     info!("eth websocket connection opened");
     let (mut websocket_tx, mut websocket_rx) = websocket.split();
-    let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel::<Value>();
+    let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel::<OutboundMessage>();
     let writer = tokio::spawn(async move {
-        while let Some(value) = outbound_rx.recv().await {
-            if websocket_tx
-                .send(Message::text(value.to_string()))
-                .await
-                .is_err()
-            {
+        while let Some(outbound) = outbound_rx.recv().await {
+            let message = match outbound {
+                OutboundMessage::Json(value) => Message::text(value.to_string()),
+                OutboundMessage::CloseTooLarge => {
+                    Message::close_with(1009u16, "JSON-RPC message exceeds max_body_bytes")
+                }
+            };
+            let is_close = message.is_close();
+            if websocket_tx.send(message).await.is_err() {
                 warn!("eth websocket writer failed; closing writer task");
+                break;
+            }
+            if is_close {
                 break;
             }
         }
     });
 
-    let mut subscriptions: HashMap<String, JoinHandle<()>> = HashMap::new();
+    let mut dispatcher = WebSocketDispatcher {
+        handlers,
+        node_client,
+        sidecar_event_sender,
+        outbound_tx: outbound_tx.clone(),
+        subscriptions: HashMap::new(),
+        pending_activations: Vec::new(),
+        max_block_range: max_eth_log_block_range,
+        subscribe_limiter,
+        unsubscribe_limiter,
+    };
+    let mut sent_too_large_close = false;
     while let Some(message) = websocket_rx.next().await {
-        let Ok(message) = message else {
-            break;
+        let message = match message {
+            Ok(message) => message,
+            Err(error) => {
+                if error.to_string().contains("Message too long") {
+                    sent_too_large_close = outbound_tx.send(OutboundMessage::CloseTooLarge).is_ok();
+                }
+                break;
+            }
         };
         if message.is_close() {
             break;
@@ -174,154 +215,147 @@ async fn handle_websocket(
             continue;
         }
 
-        let body = message.as_bytes();
-        let method = serde_json::from_slice::<Value>(body)
-            .ok()
-            .and_then(|value| {
-                value
-                    .get("method")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            });
-
-        match method.as_deref() {
-            Some("eth_subscribe") => {
-                handle_subscribe(
-                    body,
-                    node_client.clone(),
-                    sidecar_event_sender.clone(),
-                    &outbound_tx,
-                    &mut subscriptions,
-                    max_eth_log_block_range,
-                )
-                .await;
-            }
-            Some("eth_unsubscribe") => {
-                handle_unsubscribe(body, &outbound_tx, &mut subscriptions);
-            }
-            _ => {
-                if let Some(response) =
-                    handle_json_request_bytes(body, handlers.clone(), allow_unknown_fields).await
-                {
-                    send_response(&outbound_tx, response);
-                }
-            }
+        let output =
+            handle_json_request_bytes(message.as_bytes(), &mut dispatcher, &json_rpc_options).await;
+        if let Some(value) = output.into_value()
+            && outbound_tx.send(OutboundMessage::Json(value)).is_err()
+        {
+            break;
         }
+        dispatcher.activate_pending();
     }
 
-    for (_, subscription) in subscriptions {
-        subscription.abort();
+    dispatcher.abort_subscriptions();
+    drop(dispatcher);
+    drop(outbound_tx);
+    if sent_too_large_close {
+        let _ = writer.await;
+    } else {
+        writer.abort();
     }
-    writer.abort();
     info!("eth websocket connection closed");
 }
 
-async fn handle_subscribe(
-    body: &[u8],
-    node_client: Arc<dyn NodeClient>,
-    sidecar_event_sender: BroadcastSender<SidecarEvent>,
-    outbound_tx: &UnboundedSender<Value>,
-    subscriptions: &mut HashMap<String, JoinHandle<()>>,
-    max_block_range: u64,
-) {
-    let request = match serde_json::from_slice::<Value>(body) {
-        Ok(request) => request,
-        Err(error) => {
-            send_response(
-                outbound_tx,
-                Response::new_failure(
-                    Value::Null,
-                    RpcError::new(ReservedErrorCode::ParseError, error.to_string()),
-                ),
-            );
-            return;
-        }
-    };
-    let id = request_id(&request);
-    let filter = match parse_subscribe_filter(&request) {
-        Ok(filter) => filter,
-        Err(error) => {
-            send_response(outbound_tx, Response::new_failure(id, error));
-            return;
-        }
-    };
-    let subscription_start =
-        match prepare_log_subscription_start(node_client.clone(), &filter, max_block_range).await {
-            Ok(subscription_start) => subscription_start,
-            Err(error) => {
-                send_response(outbound_tx, Response::new_failure(id, error));
-                return;
-            }
-        };
-
-    let subscription_id = next_subscription_id();
-    send_response(
-        outbound_tx,
-        Response::new_success(id, json!(subscription_id.clone())),
-    );
-
-    let notification_tx = outbound_tx.clone();
-    let subscription_node_client = node_client.clone();
-    let subscription_filter = filter.clone();
-    let subscription_id_for_task = subscription_id.clone();
-    let sidecar_event_receiver = sidecar_event_sender.subscribe();
-    info!(
-        subscription_id,
-        filter = ?filter,
-        active_subscriptions = subscriptions.len() + 1,
-        sidecar_event_receivers = sidecar_event_sender.receiver_count(),
-        "created eth logs subscription"
-    );
-    let handle = tokio::spawn(async move {
-        run_log_subscription(
-            subscription_node_client,
-            subscription_filter,
-            subscription_id_for_task,
-            sidecar_event_receiver,
-            notification_tx,
-            subscription_start,
-            max_block_range,
-        )
-        .await;
-    });
-    subscriptions.insert(subscription_id.clone(), handle);
+enum OutboundMessage {
+    Json(Value),
+    CloseTooLarge,
 }
 
-fn handle_unsubscribe(
-    body: &[u8],
-    outbound_tx: &UnboundedSender<Value>,
-    subscriptions: &mut HashMap<String, JoinHandle<()>>,
-) {
-    let request = match serde_json::from_slice::<Value>(body) {
-        Ok(request) => request,
-        Err(error) => {
-            send_response(
-                outbound_tx,
-                Response::new_failure(
-                    Value::Null,
-                    RpcError::new(ReservedErrorCode::ParseError, error.to_string()),
-                ),
-            );
-            return;
+type OutboundSender = UnboundedSender<OutboundMessage>;
+
+struct WebSocketDispatcher {
+    handlers: RequestHandlers,
+    node_client: Arc<dyn NodeClient>,
+    sidecar_event_sender: BroadcastSender<SidecarEvent>,
+    outbound_tx: OutboundSender,
+    subscriptions: HashMap<String, JoinHandle<()>>,
+    pending_activations: Vec<oneshot::Sender<()>>,
+    max_block_range: u64,
+    subscribe_limiter: MethodLimiter,
+    unsubscribe_limiter: MethodLimiter,
+}
+
+impl RequestDispatcher for WebSocketDispatcher {
+    async fn dispatch(
+        &mut self,
+        method: &str,
+        params: Option<Params>,
+        request_size: usize,
+    ) -> Result<Value, RpcError> {
+        if method != SUBSCRIBE_METHOD && method != UNSUBSCRIBE_METHOD {
+            return self.handlers.dispatch(method, params, request_size).await;
         }
-    };
-    let id = request_id(&request);
-    let subscription_id = match parse_unsubscribe_id(&request) {
-        Ok(subscription_id) => subscription_id,
-        Err(error) => {
-            send_response(outbound_tx, Response::new_failure(id, error));
-            return;
+
+        let start = Instant::now();
+        inc_method_call(method);
+        register_request_size(method, request_size);
+        let limiter = if method == SUBSCRIBE_METHOD {
+            self.subscribe_limiter.clone()
+        } else {
+            self.unsubscribe_limiter.clone()
+        };
+        let result = match limiter.check() {
+            Err(error) => Err(error),
+            Ok(()) if method == SUBSCRIBE_METHOD => self.subscribe(params).await,
+            Ok(()) => self.unsubscribe(params),
+        };
+        let status = result
+            .as_ref()
+            .map_or_else(|error| error.code().to_string(), |_| "success".to_string());
+        observe_response_time(method, &status, start.elapsed());
+        result
+    }
+}
+
+impl WebSocketDispatcher {
+    async fn subscribe(&mut self, params: Option<Params>) -> Result<Value, RpcError> {
+        let filter = parse_subscribe_filter(params)?;
+        let subscription_start =
+            prepare_log_subscription_start(self.node_client.clone(), &filter, self.max_block_range)
+                .await?;
+
+        let subscription_id = next_subscription_id();
+
+        let notification_tx = self.outbound_tx.clone();
+        let subscription_node_client = self.node_client.clone();
+        let subscription_filter = filter.clone();
+        let subscription_id_for_task = subscription_id.clone();
+        let sidecar_event_receiver = self.sidecar_event_sender.subscribe();
+        let max_block_range = self.max_block_range;
+        let (activation_tx, activation_rx) = oneshot::channel();
+        info!(
+            subscription_id,
+            filter = ?filter,
+            active_subscriptions = self.subscriptions.len() + 1,
+            sidecar_event_receivers = self.sidecar_event_sender.receiver_count(),
+            "created eth logs subscription"
+        );
+        let handle = tokio::spawn(async move {
+            if activation_rx.await.is_err() {
+                return;
+            }
+            run_log_subscription(
+                subscription_node_client,
+                subscription_filter,
+                subscription_id_for_task,
+                sidecar_event_receiver,
+                notification_tx,
+                subscription_start,
+                max_block_range,
+            )
+            .await;
+        });
+        self.subscriptions.insert(subscription_id.clone(), handle);
+        self.pending_activations.push(activation_tx);
+        Ok(json!(subscription_id))
+    }
+
+    fn unsubscribe(&mut self, params: Option<Params>) -> Result<Value, RpcError> {
+        let subscription_id = parse_unsubscribe_id(params)?;
+        let existed = self
+            .subscriptions
+            .remove(&subscription_id)
+            .map(|handle| {
+                handle.abort();
+                true
+            })
+            .unwrap_or(false);
+        info!(subscription_id, existed, "eth unsubscribe requested");
+        Ok(json!(existed))
+    }
+
+    fn activate_pending(&mut self) {
+        for activation in self.pending_activations.drain(..) {
+            let _ = activation.send(());
         }
-    };
-    let existed = subscriptions
-        .remove(&subscription_id)
-        .map(|handle| {
-            handle.abort();
-            true
-        })
-        .unwrap_or(false);
-    info!(subscription_id, existed, "eth unsubscribe requested");
-    send_response(outbound_tx, Response::new_success(id, json!(existed)));
+    }
+
+    fn abort_subscriptions(&mut self) {
+        self.pending_activations.clear();
+        for (_, subscription) in self.subscriptions.drain() {
+            subscription.abort();
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -361,7 +395,7 @@ async fn run_log_subscription(
     filter: LogFilter,
     subscription_id: String,
     mut sidecar_event_receiver: BroadcastReceiver<SidecarEvent>,
-    outbound_tx: UnboundedSender<Value>,
+    outbound_tx: OutboundSender,
     subscription_start: Option<LogSubscriptionStart>,
     max_block_range: u64,
 ) {
@@ -681,7 +715,7 @@ async fn send_logs_for_block_range_with_retries(
     from_height: u64,
     to_height: u64,
     subscription_id: &str,
-    outbound_tx: &UnboundedSender<Value>,
+    outbound_tx: &OutboundSender,
     max_block_range: u64,
 ) -> Result<LogRangeFetchOutcome, LogRangeFetchError> {
     if let Err(error) = ensure_log_block_range_within_limit(from_height, to_height, max_block_range)
@@ -759,11 +793,11 @@ async fn logs_for_block_height_with_retries(
     }
 }
 
-fn parse_subscribe_filter(request: &Value) -> Result<LogFilter, RpcError> {
-    let params = request
-        .get("params")
-        .and_then(Value::as_array)
-        .ok_or_else(|| invalid_params("'params' must be an array"))?;
+fn parse_subscribe_filter(params: Option<Params>) -> Result<LogFilter, RpcError> {
+    let params = match params {
+        Some(Params::Array(params)) => params,
+        _ => return Err(invalid_params("'params' must be an array")),
+    };
     let subscription_kind = params
         .first()
         .and_then(Value::as_str)
@@ -789,11 +823,11 @@ fn parse_subscribe_filter(request: &Value) -> Result<LogFilter, RpcError> {
     LogFilter::try_from(raw_filter)
 }
 
-fn parse_unsubscribe_id(request: &Value) -> Result<String, RpcError> {
-    let params = request
-        .get("params")
-        .and_then(Value::as_array)
-        .ok_or_else(|| invalid_params("'params' must be an array"))?;
+fn parse_unsubscribe_id(params: Option<Params>) -> Result<String, RpcError> {
+    let params = match params {
+        Some(Params::Array(params)) => params,
+        _ => return Err(invalid_params("'params' must be an array")),
+    };
     if params.len() != 1 {
         return Err(invalid_params(
             "'eth_unsubscribe' accepts exactly one subscription id",
@@ -805,18 +839,8 @@ fn parse_unsubscribe_id(request: &Value) -> Result<String, RpcError> {
         .ok_or_else(|| invalid_params("subscription id must be a string"))
 }
 
-fn request_id(request: &Value) -> Value {
-    request.get("id").cloned().unwrap_or(Value::Null)
-}
-
-fn send_response(outbound_tx: &UnboundedSender<Value>, response: Response) {
-    if let Ok(value) = serde_json::to_value(response) {
-        let _ = outbound_tx.send(value);
-    }
-}
-
 fn send_notification(
-    outbound_tx: &UnboundedSender<Value>,
+    outbound_tx: &OutboundSender,
     subscription_id: &str,
     log: super::projection::LogResponse,
 ) {
@@ -827,15 +851,24 @@ fn send_notification(
         log_index = %log.log_index,
         "sending eth subscription log notification"
     );
+    #[derive(Serialize)]
+    struct SubscriptionParams<'a> {
+        subscription: &'a str,
+        result: super::projection::LogResponse,
+    }
+
+    let notification = Notification::new(
+        "eth_subscription",
+        SubscriptionParams {
+            subscription: subscription_id,
+            result: log,
+        },
+    );
+    let notification =
+        serde_json::to_value(notification).expect("subscription notification should serialize");
+
     if outbound_tx
-        .send(json!({
-            "jsonrpc": "2.0",
-            "method": "eth_subscription",
-            "params": {
-                "subscription": subscription_id,
-                "result": log,
-            },
-        }))
+        .send(OutboundMessage::Json(notification))
         .is_err()
     {
         warn!(
@@ -852,18 +885,250 @@ fn next_subscription_id() -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    use casper_binary_port::InformationRequest;
+    use casper_json_rpc::{ConfigLimit, MethodLimiter, RequestHandlersBuilder};
+    use casper_types::{
+        Block, BlockSignatures, BlockWithSignatures, TestBlockBuilder, testing::TestRng,
+    };
     use serde_json::json;
+    use tokio::time::{Duration, timeout};
 
     use super::*;
+    use crate::rpcs::test_utils::BinaryPortMock;
+
+    fn test_websocket_route(
+        calls: Arc<AtomicUsize>,
+        max_body_bytes: u64,
+    ) -> BoxedFilter<(reply::Response,)> {
+        let mut handlers = RequestHandlersBuilder::new();
+        handlers.register_handler(
+            "echo",
+            move |params| {
+                let calls = calls.clone();
+                async move {
+                    calls.fetch_add(1, Ordering::Relaxed);
+                    Ok::<_, RpcError>(params.map(Value::from).unwrap_or(Value::Null))
+                }
+            },
+            &ConfigLimit::default(),
+        );
+        let (sidecar_event_sender, _) = tokio::sync::broadcast::channel(16);
+        websocket_route(
+            "rpc",
+            handlers.build(),
+            Arc::new(BinaryPortMock::new()),
+            sidecar_event_sender,
+            JsonRpcOptions::default(),
+            WebSocketOriginPolicy::NoBrowserOrigins,
+            10_000,
+            max_body_bytes,
+            MethodLimiter::new(&ConfigLimit::default()),
+            MethodLimiter::new(&ConfigLimit::default()),
+        )
+    }
+
+    #[tokio::test]
+    async fn websocket_processes_binary_batches_and_suppresses_notification_frames() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let route = test_websocket_route(calls.clone(), 10_000);
+        let mut websocket = warp::test::ws()
+            .path("/rpc")
+            .handshake(route)
+            .await
+            .unwrap();
+
+        websocket
+            .send(Message::binary(
+                serde_json::to_vec(&json!([
+                    {"jsonrpc":"2.0","method":"echo","params":[1],"id":1},
+                    {"jsonrpc":"2.0","method":"echo","params":[2]},
+                    true
+                ]))
+                .unwrap(),
+            ))
+            .await;
+        let message = websocket.recv().await.unwrap();
+        let response: Value = serde_json::from_slice(message.as_bytes()).unwrap();
+        assert!(response.is_array());
+        assert_eq!(response.as_array().unwrap().len(), 2);
+        assert_eq!(response[0]["result"], json!([1]));
+        assert_eq!(response[1]["error"]["code"], -32600);
+        assert_eq!(calls.load(Ordering::Relaxed), 2);
+
+        websocket
+            .send_text(json!({"jsonrpc":"2.0","method":"echo","params":[3]}).to_string())
+            .await;
+        assert!(
+            timeout(Duration::from_millis(50), websocket.recv())
+                .await
+                .is_err()
+        );
+        assert_eq!(calls.load(Ordering::Relaxed), 3);
+
+        websocket
+            .send_text(json!({"jsonrpc":"2.0","method":"echo","id":null}).to_string())
+            .await;
+        let response: Value =
+            serde_json::from_slice(websocket.recv().await.unwrap().as_bytes()).unwrap();
+        assert_eq!(response["id"], Value::Null);
+        assert_eq!(response["result"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn websocket_closes_oversized_messages() {
+        let route = test_websocket_route(Arc::new(AtomicUsize::new(0)), 64);
+        let mut websocket = warp::test::ws()
+            .path("/rpc")
+            .handshake(route)
+            .await
+            .unwrap();
+        websocket.send_text("x".repeat(65)).await;
+        websocket.recv_closed().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn websocket_dispatches_subscribe_and_unsubscribe_inside_a_batch() {
+        let client = Arc::new(BinaryPortMock::new());
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().height(10).build(rng));
+        client
+            .add_block_with_signatures(
+                BlockWithSignatures::new(block, BlockSignatures::random(rng)),
+                InformationRequest::BlockWithSignatures(None),
+            )
+            .await;
+        let (sidecar_event_sender, _) = tokio::sync::broadcast::channel(16);
+        let route = websocket_route(
+            "rpc",
+            RequestHandlersBuilder::new().build(),
+            client,
+            sidecar_event_sender,
+            JsonRpcOptions::default(),
+            WebSocketOriginPolicy::NoBrowserOrigins,
+            10_000,
+            10_000,
+            MethodLimiter::new(&ConfigLimit::default()),
+            MethodLimiter::new(&ConfigLimit::default()),
+        );
+        let mut websocket = warp::test::ws()
+            .path("/rpc")
+            .handshake(route)
+            .await
+            .unwrap();
+
+        websocket
+            .send_text(
+                json!([
+                    {"jsonrpc":"2.0","method":"eth_subscribe","params":["logs"],"id":1},
+                    {"jsonrpc":"2.0","method":"eth_unsubscribe","params":["missing"],"id":2}
+                ])
+                .to_string(),
+            )
+            .await;
+        let response: Value =
+            serde_json::from_slice(websocket.recv().await.unwrap().as_bytes()).unwrap();
+        assert!(
+            response[0]["result"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("0x"))
+        );
+        assert_eq!(response[1]["result"], false);
+    }
+
+    #[tokio::test]
+    async fn subscription_notification_creates_subscription_without_direct_response() {
+        let client = Arc::new(BinaryPortMock::new());
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().height(10).build(rng));
+        client
+            .add_block_with_signatures(
+                BlockWithSignatures::new(block, BlockSignatures::random(rng)),
+                InformationRequest::BlockWithSignatures(None),
+            )
+            .await;
+        let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel();
+        let (sidecar_event_sender, _) = tokio::sync::broadcast::channel(16);
+        let mut dispatcher = WebSocketDispatcher {
+            handlers: RequestHandlersBuilder::new().build(),
+            node_client: client,
+            sidecar_event_sender,
+            outbound_tx,
+            subscriptions: HashMap::new(),
+            pending_activations: Vec::new(),
+            max_block_range: 10_000,
+            subscribe_limiter: MethodLimiter::new(&ConfigLimit::default()),
+            unsubscribe_limiter: MethodLimiter::new(&ConfigLimit::default()),
+        };
+
+        let body = serde_json::to_vec(&json!({
+            "jsonrpc": "2.0",
+            "method": "eth_subscribe",
+            "params": ["logs"],
+        }))
+        .unwrap();
+        let output =
+            handle_json_request_bytes(&body, &mut dispatcher, &JsonRpcOptions::default()).await;
+        assert_eq!(output, casper_json_rpc::JsonRpcOutput::NoResponse);
+        assert_eq!(dispatcher.subscriptions.len(), 1);
+        assert_eq!(dispatcher.pending_activations.len(), 1);
+        assert!(outbound_rx.try_recv().is_err());
+        dispatcher.abort_subscriptions();
+    }
+
+    #[tokio::test]
+    async fn activation_barrier_queues_batch_response_before_subscription_events() {
+        let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel();
+        let (sidecar_event_sender, _) = tokio::sync::broadcast::channel(16);
+        let mut dispatcher = WebSocketDispatcher {
+            handlers: RequestHandlersBuilder::new().build(),
+            node_client: Arc::new(BinaryPortMock::new()),
+            sidecar_event_sender,
+            outbound_tx: outbound_tx.clone(),
+            subscriptions: HashMap::new(),
+            pending_activations: Vec::new(),
+            max_block_range: 10_000,
+            subscribe_limiter: MethodLimiter::new(&ConfigLimit::default()),
+            unsubscribe_limiter: MethodLimiter::new(&ConfigLimit::default()),
+        };
+        let (activation_tx, activation_rx) = oneshot::channel();
+        dispatcher.pending_activations.push(activation_tx);
+        let notification_tx = outbound_tx.clone();
+        let task = tokio::spawn(async move {
+            activation_rx.await.unwrap();
+            notification_tx
+                .send(OutboundMessage::Json(json!({"event": true})))
+                .unwrap();
+        });
+
+        outbound_tx
+            .send(OutboundMessage::Json(
+                json!([{"result": "subscription-id"}]),
+            ))
+            .unwrap();
+        dispatcher.activate_pending();
+
+        let Some(OutboundMessage::Json(first)) = outbound_rx.recv().await else {
+            panic!("expected queued batch response");
+        };
+        let Some(OutboundMessage::Json(second)) = outbound_rx.recv().await else {
+            panic!("expected activated subscription event");
+        };
+        assert_eq!(first, json!([{"result": "subscription-id"}]));
+        assert_eq!(second, json!({"event": true}));
+        task.await.unwrap();
+    }
 
     #[test]
     fn parses_log_subscription_filter() {
-        let filter = parse_subscribe_filter(&json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "eth_subscribe",
-            "params": ["logs", { "topics": [null] }]
-        }))
+        let filter = parse_subscribe_filter(Some(Params::Array(vec![
+            json!("logs"),
+            json!({ "topics": [null] }),
+        ])))
         .unwrap();
 
         assert!(filter.block_hash().is_none());
@@ -871,22 +1136,17 @@ mod tests {
 
     #[test]
     fn cast_log_subscription_filter_backfills_requested_range() {
-        let filter = parse_subscribe_filter(&json!({
-            "jsonrpc": "2.0",
-            "id": 0,
-            "method": "eth_subscribe",
-            "params": [
-                "logs",
-                {
-                    "fromBlock": "earliest",
-                    "toBlock": "latest",
-                    "address": "0x0000000000000000000000000000000000000001",
-                    "topics": [
-                        "0x59950fb23669ee30425f6d79758e75fae698a6c88b2982f2980638d8bcd9397d"
-                    ]
-                }
-            ]
-        }))
+        let filter = parse_subscribe_filter(Some(Params::Array(vec![
+            json!("logs"),
+            json!({
+                "fromBlock": "earliest",
+                "toBlock": "latest",
+                "address": "0x0000000000000000000000000000000000000001",
+                "topics": [
+                    "0x59950fb23669ee30425f6d79758e75fae698a6c88b2982f2980638d8bcd9397d"
+                ]
+            }),
+        ])))
         .unwrap();
 
         assert_eq!(
@@ -897,12 +1157,10 @@ mod tests {
 
     #[test]
     fn unbounded_log_subscription_starts_after_latest_block() {
-        let filter = parse_subscribe_filter(&json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "eth_subscribe",
-            "params": ["logs", { "topics": [null] }]
-        }))
+        let filter = parse_subscribe_filter(Some(Params::Array(vec![
+            json!("logs"),
+            json!({ "topics": [null] }),
+        ])))
         .unwrap();
 
         assert_eq!(
@@ -913,13 +1171,7 @@ mod tests {
 
     #[test]
     fn rejects_unsupported_subscription_kind() {
-        let err = parse_subscribe_filter(&json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "eth_subscribe",
-            "params": ["newHeads"]
-        }))
-        .unwrap_err();
+        let err = parse_subscribe_filter(Some(Params::Array(vec![json!("newHeads")]))).unwrap_err();
 
         assert_eq!(
             err,
@@ -929,13 +1181,8 @@ mod tests {
 
     #[test]
     fn parses_unsubscribe_id() {
-        let subscription_id = parse_unsubscribe_id(&json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "eth_unsubscribe",
-            "params": ["0x1"]
-        }))
-        .unwrap();
+        let subscription_id =
+            parse_unsubscribe_id(Some(Params::Array(vec![json!("0x1")]))).unwrap();
 
         assert_eq!(subscription_id, "0x1");
     }

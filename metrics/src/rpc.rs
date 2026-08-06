@@ -1,7 +1,9 @@
 use std::{sync::LazyLock, time::Duration};
 
 use super::REGISTRY;
-use prometheus::{Histogram, HistogramOpts, HistogramVec, IntCounterVec, IntGauge, Opts};
+use prometheus::{
+    Histogram, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGauge, Opts,
+};
 
 const RESPONSE_SIZE_BUCKETS: &[f64; 8] = &[
     5e+2_f64, 1e+3_f64, 2e+3_f64, 5e+3_f64, 5e+4_f64, 5e+5_f64, 5e+6_f64, 5e+7_f64,
@@ -109,6 +111,60 @@ static ENDPOINT_REQUEST_BYTES: LazyLock<HistogramVec> = LazyLock::new(|| {
     counter
 });
 
+static BATCH_LENGTHS: LazyLock<Histogram> = LazyLock::new(|| {
+    let histogram = Histogram::with_opts(
+        HistogramOpts::new(
+            "rpc_server_batch_lengths",
+            "Number of entries in JSON-RPC batches",
+        )
+        .buckets(vec![1.0, 2.0, 5.0, 10.0, 25.0, 50.0, 100.0, 200.0]),
+    )
+    .expect("rpc_server_batch_lengths metric can't be created");
+    REGISTRY
+        .register(Box::new(histogram.clone()))
+        .expect("cannot register metric");
+    histogram
+});
+
+static BATCH_RESPONSE_BYTES: LazyLock<Histogram> = LazyLock::new(|| {
+    let histogram = Histogram::with_opts(
+        HistogramOpts::new(
+            "rpc_server_batch_response_bytes",
+            "Serialized JSON-RPC batch response sizes",
+        )
+        .buckets(RESPONSE_SIZE_BUCKETS.to_vec()),
+    )
+    .expect("rpc_server_batch_response_bytes metric can't be created");
+    REGISTRY
+        .register(Box::new(histogram.clone()))
+        .expect("cannot register metric");
+    histogram
+});
+
+static BATCH_COUNT_LIMIT_REJECTIONS: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter = IntCounter::new(
+        "rpc_server_batch_count_limit_rejections",
+        "JSON-RPC batches rejected for exceeding the item limit",
+    )
+    .expect("rpc_server_batch_count_limit_rejections metric can't be created");
+    REGISTRY
+        .register(Box::new(counter.clone()))
+        .expect("cannot register metric");
+    counter
+});
+
+static BATCH_RESPONSE_LIMIT_TRUNCATIONS: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter = IntCounter::new(
+        "rpc_server_batch_response_limit_truncations",
+        "JSON-RPC batch responses truncated by the soft response-size limit",
+    )
+    .expect("rpc_server_batch_response_limit_truncations metric can't be created");
+    REGISTRY
+        .register(Box::new(counter.clone()))
+        .expect("cannot register metric");
+    counter
+});
+
 pub fn inc_method_call(method: &str) {
     ENDPOINT_CALLS.with_label_values(&[method]).inc();
 }
@@ -141,4 +197,20 @@ pub fn register_timeout(timer_name: &str) {
 
 pub fn register_mismatched_id() {
     MISMATCHED_IDS.inc();
+}
+
+pub fn observe_batch_length(length: usize) {
+    BATCH_LENGTHS.observe(length as f64);
+}
+
+pub fn observe_batch_response_bytes(response_bytes: u64) {
+    BATCH_RESPONSE_BYTES.observe(response_bytes as f64);
+}
+
+pub fn inc_batch_count_limit_rejection() {
+    BATCH_COUNT_LIMIT_REJECTIONS.inc();
+}
+
+pub fn inc_batch_response_limit_truncation() {
+    BATCH_RESPONSE_LIMIT_TRUNCATIONS.inc();
 }

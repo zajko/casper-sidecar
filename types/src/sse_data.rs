@@ -231,7 +231,13 @@ impl SseData {
 
 #[cfg(feature = "sse-data-testing")]
 pub mod test_support {
+    use casper_types::{
+        AsymmetricType, BlockHash, ChainNameDigest, Digest, EraId, FinalitySignature,
+        FinalitySignatureV2, ProtocolVersion, PublicKey, Signature,
+    };
     use serde_json::json;
+
+    use super::SseData;
 
     pub const BLOCK_HASH_1: &str =
         "ca52062424e9d5631a34b7b401e123927ce29d4bd10bc97c7df0aa752f131bb7";
@@ -244,12 +250,12 @@ pub mod test_support {
 
     #[must_use]
     pub fn example_api_version() -> String {
-        "{\"ApiVersion\":\"2.0.0\"}".to_string()
+        serde_json::to_string(&SseData::ApiVersion(ProtocolVersion::V2_0_0)).unwrap()
     }
 
     #[must_use]
     pub fn shutdown() -> String {
-        "\"Shutdown\"".to_string()
+        serde_json::to_string(&SseData::Shutdown).unwrap()
     }
 
     #[must_use]
@@ -261,10 +267,20 @@ pub mod test_support {
 
     #[must_use]
     pub fn example_finality_signature_2_0_0(hash: &str) -> String {
-        let raw_block_added = format!(
-            "{{\"FinalitySignature\":{{\"V2\":{{\"block_hash\":\"{hash}\",\"block_height\":123026,\"era_id\":279,\"chain_name_hash\":\"f087a92e6e7077b3deb5e00b14a904e34c7068a9410365435bc7ca5d3ac64301\",\"signature\":\"01f2e7303a064d68b83d438c55056db2e32eda973f24c548176ac654580f0a6ef8b8b4ce7758bcee6f889bc5d4a653b107d6d4c9f5f20701c08259ece28095a10d\",\"public_key\":\"0126d4637eb0c0769274f03a696df1112383fa621c9f73f57af4c5c0fbadafa8cf\"}}}}}}"
+        let finality_signature = FinalitySignatureV2::new(
+            BlockHash::new(Digest::from_hex(hash).unwrap()),
+            123026,
+            EraId::new(279),
+            ChainNameDigest::from_digest(
+                Digest::from_hex(
+                    "f087a92e6e7077b3deb5e00b14a904e34c7068a9410365435bc7ca5d3ac64301",
+                )
+                .unwrap(),
+            ),
+            Signature::from_hex("01f2e7303a064d68b83d438c55056db2e32eda973f24c548176ac654580f0a6ef8b8b4ce7758bcee6f889bc5d4a653b107d6d4c9f5f20701c08259ece28095a10d").unwrap(),
+            PublicKey::from_hex("0126d4637eb0c0769274f03a696df1112383fa621c9f73f57af4c5c0fbadafa8cf").unwrap(),
         );
-        super::deserialize(&raw_block_added).unwrap(); // deserializing to make sure that the raw json string is in correct form
-        raw_block_added
+        let event = SseData::FinalitySignature(Box::new(FinalitySignature::V2(finality_signature)));
+        serde_json::to_string(&event).unwrap()
     }
 }

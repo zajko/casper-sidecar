@@ -19,7 +19,7 @@ Typical usage of this library involves two steps:
 # Example
 
 ```rust
-use casper_json_rpc::{ConfigLimit, Error, Params, RequestHandlersBuilder};
+use casper_json_rpc::{ConfigLimit, Error, JsonRpcOptions, Params, RequestHandlersBuilder};
 use std::{convert::Infallible};
 
 async fn get(params: Option<Params>) -> Result<String, Error> {
@@ -45,7 +45,8 @@ async fn main() {
     // Get the new route.
     let path = "rpc";
     let max_body_bytes = 1024;
-    let route = casper_json_rpc::route(path, max_body_bytes, handlers);
+    let options = JsonRpcOptions::default();
+    let route = casper_json_rpc::route(path, max_body_bytes, handlers, options);
 
     // Convert it into a `Service` and run it.
     let make_svc = hyper::service::make_service_fn(move |_| {
@@ -71,6 +72,28 @@ Here is a sample response:
 ```sh
 {"jsonrpc":"2.0","id":"id","result":"got it"}
 ```
+
+## Batches, notifications, and custom transports
+
+Version 3 accepts JSON-RPC 2.0 batches and notifications. A notification is a fully valid request
+whose `id` field is absent; its handler still runs, but no success or error response is emitted.
+An explicit `"id": null` is a call and does receive a response. Batch responses preserve request
+order after notification entries are omitted.
+
+For non-HTTP transports, implement `RequestDispatcher` and call
+`handle_json_request_bytes`. It returns `JsonRpcOutput::NoResponse`, `Single`, or a non-empty
+`Batch`. HTTP maps `NoResponse` to `204 No Content`; WebSocket transports should send no frame.
+Use `Notification::new` with serializable parameters when a server transport needs to emit an
+outbound JSON-RPC notification.
+
+`JsonRpcOptions` controls unknown-field validation, the maximum batch length, and the soft maximum
+serialized batch-response size. Its defaults are 100 entries and 25,000,000 response bytes.
+
+### Version 3 wire migration
+
+`params: null` is no longer accepted. Omit `params` when a method takes no parameters, or send an
+empty array (`"params": []`) when a client requires the field. Array and object parameters remain
+supported.
 
 # Errors
 

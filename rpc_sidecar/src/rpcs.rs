@@ -41,8 +41,8 @@ use warp::{
 
 use casper_event_types::SidecarEvent;
 use casper_json_rpc::{
-    ConfigLimit, CorsOrigin, Error as RpcError, Params, RequestHandlers, RequestHandlersBuilder,
-    ReservedErrorCode,
+    ConfigLimit, CorsOrigin, Error as RpcError, JsonRpcOptions, MethodLimiter, Params,
+    RequestHandlers, RequestHandlersBuilder, ReservedErrorCode,
 };
 use casper_types::SemVer;
 use tokio::sync::broadcast::Sender as BroadcastSender;
@@ -60,6 +60,7 @@ pub const CURRENT_API_VERSION: ApiVersion = ApiVersion(SemVer::new(2, 0, 0));
 /// standard 'id', 'jsonrpc', 'method', and 'params' fields.
 ///
 /// It will be changed to `false` for casper-node v2.0.0.
+#[cfg(test)]
 const ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST: bool = true;
 
 /// A JSON-RPC requiring the "params" field to be present.
@@ -378,6 +379,7 @@ pub(super) async fn run_with_cors(
     handlers: RequestHandlers,
     qps_limit: NonZeroU32,
     max_body_bytes: u64,
+    json_rpc_options: JsonRpcOptions,
     api_path: &'static str,
     server_name: &'static str,
     cors_header: CorsOrigin,
@@ -386,7 +388,7 @@ pub(super) async fn run_with_cors(
         api_path,
         max_body_bytes,
         handlers,
-        ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
+        json_rpc_options,
         cors_header,
     );
     run_service(ip_address, port, service_routes, server_name, qps_limit).await;
@@ -402,10 +404,13 @@ pub(super) async fn run_with_websocket(
     sidecar_event_sender: BroadcastSender<SidecarEvent>,
     qps_limit: NonZeroU32,
     max_body_bytes: u64,
+    json_rpc_options: JsonRpcOptions,
     api_path: &'static str,
     server_name: &'static str,
     max_eth_log_block_range: u64,
     cors_header: Option<CorsOrigin>,
+    subscribe_limiter: MethodLimiter,
+    unsubscribe_limiter: MethodLimiter,
 ) {
     let websocket_origin_policy =
         eth::WebSocketOriginPolicy::from_cors_header(cors_header.as_ref());
@@ -414,49 +419,47 @@ pub(super) async fn run_with_websocket(
             api_path,
             max_body_bytes,
             handlers.clone(),
-            ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
+            json_rpc_options,
             cors_header,
         )
         .map(Reply::into_response)
         .boxed(),
-        None => casper_json_rpc::route(
-            api_path,
-            max_body_bytes,
-            handlers.clone(),
-            ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
-        )
-        .map(Reply::into_response)
-        .boxed(),
+        None => {
+            casper_json_rpc::route(api_path, max_body_bytes, handlers.clone(), json_rpc_options)
+                .map(Reply::into_response)
+                .boxed()
+        }
     };
     let websocket_routes = eth::websocket_route(
         api_path,
         handlers,
         node_client,
         sidecar_event_sender,
-        ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
+        json_rpc_options,
         websocket_origin_policy,
         max_eth_log_block_range,
+        max_body_bytes,
+        subscribe_limiter,
+        unsubscribe_limiter,
     );
     let service_routes = websocket_routes.or(http_routes).unify().boxed();
     run_service(ip_address, port, service_routes, server_name, qps_limit).await;
 }
 
 /// Start JSON RPC server in a background.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn run(
     ip_address: IpAddr,
     port: u16,
     handlers: RequestHandlers,
     qps_limit: NonZeroU32,
     max_body_bytes: u64,
+    json_rpc_options: JsonRpcOptions,
     api_path: &'static str,
     server_name: &'static str,
 ) {
-    let service_routes = casper_json_rpc::route(
-        api_path,
-        max_body_bytes,
-        handlers,
-        ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
-    );
+    let service_routes =
+        casper_json_rpc::route(api_path, max_body_bytes, handlers, json_rpc_options);
     run_service(ip_address, port, service_routes, server_name, qps_limit).await;
 }
 
@@ -494,8 +497,6 @@ impl fmt::Display for ApiVersion {
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::Write;
-
     use warp::{Filter, Reply, filters::BoxedFilter};
 
     use casper_json_rpc::{Response, filters};
@@ -505,17 +506,16 @@ mod tests {
 
     async fn send_request(
         method: &str,
-        maybe_params: Option<&str>,
+        maybe_params: Option<Value>,
         filter: &BoxedFilter<(impl Reply + 'static,)>,
     ) -> Response {
-        let mut body = format!(r#"{{"jsonrpc":"2.0","id":"a","method":"{method}""#);
-        match maybe_params {
-            Some(params) => write!(body, r#","params":{params}}}"#).unwrap(),
-            None => body += "}",
+        let mut body = json!({"jsonrpc": "2.0", "id": "a", "method": method});
+        if let Some(params) = maybe_params {
+            body["params"] = params;
         }
 
         let http_response = warp::test::request()
-            .body(body)
+            .body(body.to_string())
             .filter(filter)
             .await
             .unwrap()
@@ -528,6 +528,38 @@ mod tests {
         serde_json::from_slice(&body_bytes).unwrap()
     }
 
+    #[tokio::test]
+    async fn gzip_compresses_batch_responses() {
+        let mut handlers = RequestHandlersBuilder::new();
+        handlers.register_handler(
+            "echo",
+            |params| async move { Ok(params.map(Value::from).unwrap_or(Value::Null)) },
+            &ConfigLimit::default(),
+        );
+        let service_routes = filters::main_filter(handlers.build(), JsonRpcOptions::default());
+        let service_routes_gzip = warp::header::exact(ACCEPT_ENCODING.as_str(), "gzip")
+            .and(service_routes)
+            .with(warp::compression::gzip());
+        let response = warp::test::request()
+            .header(ACCEPT_ENCODING.as_str(), "gzip")
+            .body(
+                json!([
+                    {"jsonrpc":"2.0","method":"echo","params":[1],"id":1},
+                    {"jsonrpc":"2.0","method":"echo","params":[2],"id":2}
+                ])
+                .to_string(),
+            )
+            .filter(&service_routes_gzip)
+            .await
+            .unwrap()
+            .into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["content-encoding"], "gzip");
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        assert!(!body.is_empty());
+    }
+
     mod rpc_with_params {
         use super::*;
         use crate::rpcs::info::{GetDeploy, GetDeployParams, GetDeployResult};
@@ -537,22 +569,27 @@ mod tests {
             GetDeploy::register_as_test_handler(&mut handlers);
             let handlers = handlers.build();
 
-            filters::main_filter(handlers, ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST)
-                .recover(filters::handle_rejection)
-                .boxed()
+            filters::main_filter(
+                handlers,
+                JsonRpcOptions {
+                    allow_unknown_fields: ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
+                    ..JsonRpcOptions::default()
+                },
+            )
+            .recover(filters::handle_rejection)
+            .boxed()
         }
 
         #[tokio::test]
         async fn should_parse_params() {
             let filter = main_filter_with_recovery();
 
-            let params = serde_json::to_string(&GetDeployParams {
+            let params = serde_json::to_value(GetDeployParams {
                 deploy_hash: DeployHash::default(),
                 finalized_approvals: false,
             })
             .unwrap();
-            let params = Some(params.as_str());
-            let rpc_response = send_request(GetDeploy::METHOD, params, &filter).await;
+            let rpc_response = send_request(GetDeploy::METHOD, Some(params), &filter).await;
             assert_eq!(
                 rpc_response.result().as_ref(),
                 Some(GetDeployResult::doc_example())
@@ -569,7 +606,7 @@ mod tests {
                 &RpcError::new(ReservedErrorCode::InvalidParams, "Missing 'params' field")
             );
 
-            let rpc_response = send_request(GetDeploy::METHOD, Some("[]"), &filter).await;
+            let rpc_response = send_request(GetDeploy::METHOD, Some(json!([])), &filter).await;
             assert_eq!(
                 rpc_response.error().unwrap(),
                 &RpcError::new(
@@ -584,12 +621,12 @@ mod tests {
         async fn should_return_error_on_failure_to_parse_params() {
             let filter = main_filter_with_recovery();
 
-            let rpc_response = send_request(GetDeploy::METHOD, Some("[3]"), &filter).await;
+            let rpc_response = send_request(GetDeploy::METHOD, Some(json!([3])), &filter).await;
             assert_eq!(
                 rpc_response.error().unwrap(),
                 &RpcError::new(
                     ReservedErrorCode::InvalidParams,
-                    "Failed to parse 'params' field: invalid type: integer `3`, expected a string"
+                    "Failed to parse 'params' field: invalid type: number, expected a string"
                 )
             );
         }
@@ -606,9 +643,15 @@ mod tests {
             GetPeers::register_as_test_handler(&mut handlers);
             let handlers = handlers.build();
 
-            filters::main_filter(handlers, ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST)
-                .recover(filters::handle_rejection)
-                .boxed()
+            filters::main_filter(
+                handlers,
+                JsonRpcOptions {
+                    allow_unknown_fields: ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
+                    ..JsonRpcOptions::default()
+                },
+            )
+            .recover(filters::handle_rejection)
+            .boxed()
         }
 
         #[tokio::test]
@@ -621,13 +664,13 @@ mod tests {
                 Some(GetPeersResult::doc_example())
             );
 
-            let rpc_response = send_request(GetPeers::METHOD, Some("[]"), &filter).await;
+            let rpc_response = send_request(GetPeers::METHOD, Some(json!([])), &filter).await;
             assert_eq!(
                 rpc_response.result().as_ref(),
                 Some(GetPeersResult::doc_example())
             );
 
-            let rpc_response = send_request(GetPeers::METHOD, Some("{}"), &filter).await;
+            let rpc_response = send_request(GetPeers::METHOD, Some(json!({})), &filter).await;
             assert_eq!(
                 rpc_response.result().as_ref(),
                 Some(GetPeersResult::doc_example())
@@ -638,7 +681,7 @@ mod tests {
         async fn should_return_error_if_params_not_empty() {
             let filter = main_filter_with_recovery();
 
-            let rpc_response = send_request(GetPeers::METHOD, Some("[3]"), &filter).await;
+            let rpc_response = send_request(GetPeers::METHOD, Some(json!([3])), &filter).await;
             assert_eq!(
                 rpc_response.error().unwrap(),
                 &RpcError::new(
@@ -683,9 +726,15 @@ mod tests {
             GetBlock::register_as_test_handler(&mut handlers);
             let handlers = handlers.build();
 
-            filters::main_filter(handlers, ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST)
-                .recover(filters::handle_rejection)
-                .boxed()
+            filters::main_filter(
+                handlers,
+                JsonRpcOptions {
+                    allow_unknown_fields: ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
+                    ..JsonRpcOptions::default()
+                },
+            )
+            .recover(filters::handle_rejection)
+            .boxed()
         }
 
         #[tokio::test]
@@ -698,13 +747,13 @@ mod tests {
                 Some(GetBlockResult::doc_example())
             );
 
-            let rpc_response = send_request(GetBlock::METHOD, Some("[]"), &filter).await;
+            let rpc_response = send_request(GetBlock::METHOD, Some(json!([])), &filter).await;
             assert_eq!(
                 rpc_response.result().as_ref(),
                 Some(GetBlockResult::doc_example())
             );
 
-            let rpc_response = send_request(GetBlock::METHOD, Some("{}"), &filter).await;
+            let rpc_response = send_request(GetBlock::METHOD, Some(json!({})), &filter).await;
             assert_eq!(
                 rpc_response.result().as_ref(),
                 Some(GetBlockResult::doc_example())
@@ -715,13 +764,12 @@ mod tests {
         async fn should_parse_with_params() {
             let filter = main_filter_with_recovery();
 
-            let params = serde_json::to_string(&GetBlockParams {
+            let params = serde_json::to_value(GetBlockParams {
                 block_identifier: BlockIdentifier::Height(1),
             })
             .unwrap();
-            let params = Some(params.as_str());
 
-            let rpc_response = send_request(GetBlock::METHOD, params, &filter).await;
+            let rpc_response = send_request(GetBlock::METHOD, Some(params), &filter).await;
             assert_eq!(
                 rpc_response.result().as_ref(),
                 Some(GetBlockResult::doc_example())
@@ -732,7 +780,7 @@ mod tests {
         async fn should_return_error_on_failure_to_parse_params() {
             let filter = main_filter_with_recovery();
 
-            let rpc_response = send_request(GetBlock::METHOD, Some(r#"["a"]"#), &filter).await;
+            let rpc_response = send_request(GetBlock::METHOD, Some(json!(["a"])), &filter).await;
             assert_eq!(
                 rpc_response.error().unwrap(),
                 &RpcError::new(

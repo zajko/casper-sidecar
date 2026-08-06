@@ -10,21 +10,18 @@ use std::{convert::Infallible, hash::Hash};
 
 use bytes::Bytes;
 use http::{StatusCode, header::CONTENT_TYPE};
-use serde_json::{Map, Value, json};
-use tracing::{debug, trace, warn};
+use serde_json::json;
+use tracing::{trace, warn};
 use warp::{
-    Filter, body,
+    Filter, Reply, body,
     filters::{self, BoxedFilter},
     reject::{self, Rejection},
     reply::{self, WithStatus},
 };
 
 use crate::{
-    error::{Error, ReservedErrorCode},
-    rejections::{BodyTooLarge, MissingId},
-    request::{ErrorOrRejection, Request},
+    JsonRpcOptions, JsonRpcOutput, handle_json_request_bytes, rejections::BodyTooLarge,
     request_handlers::RequestHandlers,
-    response::Response,
 };
 
 const CONTENT_TYPE_VALUE: &str = "application/json";
@@ -55,63 +52,32 @@ pub fn base_filter<P: AsRef<str> + Eq + Hash + Send + Sync + 'static>(
         .boxed()
 }
 
-/// Handles parsing a JSON-RPC request from the given HTTP body, executing it using the appropriate
-/// handler, and providing a JSON-RPC response (which could be a success or failure).
-///
-/// Returns an `Err(Rejection)` only if the request is a Notification as per the JSON-RPC
-/// specification, i.e. the request doesn't contain an "id" field.  In this case, no JSON-RPC
-/// response is sent to the client.
-///
-/// If `allow_unknown_fields` is `false`, requests with unknown fields will cause the server to
-/// respond with an error.
-async fn handle_body(
-    body: Bytes,
-    handlers: RequestHandlers,
-    allow_unknown_fields: bool,
-) -> Result<Response, Rejection> {
-    let response = match serde_json::from_slice::<Map<String, Value>>(&body) {
-        Ok(unvalidated_request) => match Request::new(unvalidated_request, allow_unknown_fields) {
-            Ok(request) => handlers.handle_request(request, body.len()).await,
-            Err(ErrorOrRejection::Error { id, error }) => {
-                debug!(?error, "got an invalid request");
-                Response::new_failure(id, error)
-            }
-            Err(ErrorOrRejection::Rejection(rejection)) => {
-                debug!(?rejection, "rejecting an invalid request");
-                return Err(rejection);
-            }
-        },
-        Err(error) => {
-            debug!(%error, "got bad json");
-            let error = Error::new(ReservedErrorCode::ParseError, error.to_string());
-            Response::new_failure(Value::Null, error)
-        }
-    };
-    Ok(response)
-}
-
 /// Returns a boxed warp filter which handles parsing a JSON-RPC request from the given HTTP body,
 /// executing it using the appropriate handler, and providing a reply.
 ///
-/// The reply will normally be built from a JSON-RPC response (which could be a success or failure).
-///
-/// However, the reply could be built from a [`Rejection`] if the request is a Notification as per
-/// the JSON-RPC specification, i.e. the request doesn't contain an "id" field.  In this case, no
-/// JSON-RPC response is sent to the client, only an HTTP response.
-///
-/// If `allow_unknown_fields` is `false`, requests with unknown fields will cause the server to
-/// respond with an error.
+/// Notifications execute and produce an HTTP 204 response with an empty body.
 #[must_use]
 pub fn main_filter(
     handlers: RequestHandlers,
-    allow_unknown_fields: bool,
-) -> BoxedFilter<(WithStatus<reply::Json>,)> {
+    options: JsonRpcOptions,
+) -> BoxedFilter<(reply::Response,)> {
     body::bytes()
-        .and_then(move |body| {
-            let handlers = handlers.clone();
-            async move { handle_body(body, handlers, allow_unknown_fields).await }
+        .then(move |body: Bytes| {
+            let mut handlers = handlers.clone();
+            async move {
+                match handle_json_request_bytes(&body, &mut handlers, &options).await {
+                    JsonRpcOutput::NoResponse => {
+                        reply::with_status("", StatusCode::NO_CONTENT).into_response()
+                    }
+                    JsonRpcOutput::Single(response) => {
+                        reply::with_status(reply::json(&response), StatusCode::OK).into_response()
+                    }
+                    JsonRpcOutput::Batch(responses) => {
+                        reply::with_status(reply::json(&responses), StatusCode::OK).into_response()
+                    }
+                }
+            }
         })
-        .map(|response| reply::with_status(reply::json(&response), StatusCode::OK))
         .boxed()
 }
 
@@ -125,11 +91,7 @@ pub async fn handle_rejection(error: Rejection) -> Result<WithStatus<reply::Json
     let code;
     let message;
 
-    if let Some(rejection) = error.find::<MissingId>() {
-        trace!("{rejection:?}");
-        message = rejection.to_string();
-        code = StatusCode::BAD_REQUEST;
-    } else if let Some(rejection) = error.find::<BodyTooLarge>() {
+    if let Some(rejection) = error.find::<BodyTooLarge>() {
         trace!("{rejection:?}");
         message = rejection.to_string();
         code = StatusCode::PAYLOAD_TOO_LARGE;

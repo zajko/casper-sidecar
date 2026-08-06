@@ -3,16 +3,21 @@ pub(crate) mod tests {
     use crate::testing::simple_sse_server::tests::{CacheAndData, SimpleSseServer};
     use casper_event_types::sse_data::SseData;
     use casper_event_types::sse_data::test_support::*;
-    use casper_types::testing::TestRng;
+    use casper_types::{ProtocolVersion, testing::TestRng};
     use hex_fmt::HexFmt;
     use std::collections::HashMap;
     use tokio::sync::mpsc::{Receiver, Sender};
 
     pub type EventsWithIds = Vec<(Option<String>, String)>;
 
+    fn api_version(version: &str) -> String {
+        let protocol_version = version.parse::<ProtocolVersion>().unwrap();
+        serde_json::to_string(&SseData::ApiVersion(protocol_version)).unwrap()
+    }
+
     pub fn example_data_2_0_1() -> EventsWithIds {
         vec![
-            (None, "{\"ApiVersion\":\"2.0.1\"}".to_string()),
+            (None, api_version("2.0.1")),
             (
                 Some("0".to_string()),
                 example_block_added_2_0_0(BLOCK_HASH_3, 3u64),
@@ -22,7 +27,7 @@ pub(crate) mod tests {
 
     pub fn sse_server_shutdown_2_0_0_data() -> EventsWithIds {
         vec![
-            (None, "{\"ApiVersion\":\"2.0.0\"}".to_string()),
+            (None, api_version("2.0.0")),
             (Some("0".to_string()), shutdown()),
             (
                 Some("1".to_string()),
@@ -38,7 +43,7 @@ pub(crate) mod tests {
     ) -> (EventsWithIds, TestRng) {
         let (blocks_added, rng) =
             generate_random_blocks_added(number_of_block_added_messages, start_index, rng);
-        let data = vec![(None, "{\"ApiVersion\":\"2.0.0\"}".to_string())];
+        let data = vec![(None, api_version("2.0.0"))];
         let mut data: EventsWithIds = data.into_iter().chain(blocks_added).collect();
         let shutdown_index: u32 = start_index + 31;
         data.push((Some(shutdown_index.to_string()), shutdown()));
@@ -47,7 +52,7 @@ pub(crate) mod tests {
 
     pub fn sse_server_example_data(version: &str) -> EventsWithIds {
         vec![
-            (None, format!("{{\"ApiVersion\":\"{version}\"}}")),
+            (None, api_version(version)),
             (
                 Some("1".to_string()),
                 example_block_added_2_0_0(BLOCK_HASH_2, 2u64),
@@ -57,7 +62,7 @@ pub(crate) mod tests {
 
     pub fn sse_server_example_2_0_0_data() -> EventsWithIds {
         vec![
-            (None, "{\"ApiVersion\":\"2.0.0\"}".to_string()),
+            (None, api_version("2.0.0")),
             (
                 Some("1".to_string()),
                 example_block_added_2_0_0(BLOCK_HASH_2, 2u64),
@@ -67,7 +72,7 @@ pub(crate) mod tests {
 
     pub fn sse_server_sigs_2_0_0_data() -> EventsWithIds {
         vec![
-            (None, "{\"ApiVersion\":\"2.0.0\"}".to_string()),
+            (None, api_version("2.0.0")),
             (
                 Some("1".to_string()),
                 example_finality_signature_2_0_0(BLOCK_HASH_2),
@@ -77,7 +82,7 @@ pub(crate) mod tests {
 
     pub fn sse_server_example_2_0_0_data_second() -> EventsWithIds {
         vec![
-            (None, "{\"ApiVersion\":\"2.0.0\"}".to_string()),
+            (None, api_version("2.0.0")),
             (
                 Some("3".to_string()),
                 example_block_added_2_0_0(BLOCK_HASH_3, 3u64),
@@ -87,7 +92,7 @@ pub(crate) mod tests {
 
     pub fn sse_server_example_2_0_0_data_third() -> EventsWithIds {
         vec![
-            (None, "{\"ApiVersion\":\"2.0.0\"}".to_string()),
+            (None, api_version("2.0.0")),
             (
                 Some("1".to_string()),
                 example_block_added_2_0_0(BLOCK_HASH_3, 3u64),

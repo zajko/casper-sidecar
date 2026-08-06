@@ -3,12 +3,12 @@ use serde::{
     Deserialize, Serialize,
     ser::{Error as _, Serializer},
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use warp::{Filter, Reply, filters::BoxedFilter};
 
-use super::ResponseBodyOnRejection;
 use crate::{
-    ConfigLimit, Error, Params, RequestHandlersBuilder, ReservedErrorCode, Response,
+    ConfigLimit, Error, JsonRpcOptions, Params, RequestHandlersBuilder, ReservedErrorCode,
+    Response,
     filters::{handle_rejection, main_filter},
 };
 
@@ -53,7 +53,7 @@ fn main_filter_with_recovery() -> BoxedFilter<(impl Reply,)> {
     handlers.register_handler(GET_BAD_THING, get_bad_thing, &ConfigLimit::default());
     let handlers = handlers.build();
 
-    main_filter(handlers, false)
+    main_filter(handlers, JsonRpcOptions::default())
         .recover(handle_rejection)
         .boxed()
 }
@@ -67,7 +67,10 @@ async fn should_handle_valid_request() {
     // This should get handled by `fn get_good_thing` and return `Ok` as "params" is Some, causing a
     // Response::Success to be returned to the client.
     let http_response = warp::test::request()
-        .body(r#"{"jsonrpc":"2.0","id":"a","method":"get good thing","params":["one"]}"#)
+        .body(
+            json!({"jsonrpc":"2.0","id":"a","method":"get good thing","params":["one"]})
+                .to_string(),
+        )
         .filter(&filter)
         .await
         .unwrap()
@@ -93,7 +96,7 @@ async fn should_handle_valid_request_where_rpc_returns_error() {
     // This should get handled by `fn get_good_thing` and return `Err` as "params" is None, causing
     // a Response::Failure (invalid params) to be returned to the client.
     let http_response = warp::test::request()
-        .body(r#"{"jsonrpc":"2.0","id":"a","method":"get good thing"}"#)
+        .body(json!({"jsonrpc":"2.0","id":"a","method":"get good thing"}).to_string())
         .filter(&filter)
         .await
         .unwrap()
@@ -117,7 +120,7 @@ async fn should_handle_valid_request_where_result_encoding_fails() {
     // This should get handled by `fn get_bad_thing` which returns a type which fails to encode,
     // causing a Response::Failure (internal error) to be returned to the client.
     let http_response = warp::test::request()
-        .body(r#"{"jsonrpc":"2.0","id":"a","method":"get bad thing"}"#)
+        .body(json!({"jsonrpc":"2.0","id":"a","method":"get bad thing"}).to_string())
         .filter(&filter)
         .await
         .unwrap()
@@ -144,7 +147,9 @@ async fn should_handle_request_for_method_not_registered() {
     // This should get handled by `filters::handle_body` and return Response::Failure (invalid
     // request) to the client as the ID has fractional parts.
     let http_response = warp::test::request()
-        .body(r#"{"jsonrpc":"2.0","id":1,"method":"not registered","params":["one"]}"#)
+        .body(
+            json!({"jsonrpc":"2.0","id":1,"method":"not registered","params":["one"]}).to_string(),
+        )
         .filter(&filter)
         .await
         .unwrap()
@@ -163,15 +168,17 @@ async fn should_handle_request_for_method_not_registered() {
 }
 
 #[tokio::test]
-async fn should_handle_request_with_invalid_id() {
+async fn should_handle_request_with_fractional_id() {
     let _ = env_logger::try_init();
 
     let filter = main_filter_with_recovery();
 
-    // This should get handled by `filters::handle_body` and return Response::Failure (invalid
-    // request) to the client as the ID has fractional parts.
+    // JSON number IDs, including fractional values, are accepted and echoed.
     let http_response = warp::test::request()
-        .body(r#"{"jsonrpc":"2.0","id":1.1,"method":"get good thing","params":["one"]}"#)
+        .body(
+            json!({"jsonrpc":"2.0","id":1.1,"method":"get good thing","params":["one"]})
+                .to_string(),
+        )
         .filter(&filter)
         .await
         .unwrap()
@@ -179,13 +186,12 @@ async fn should_handle_request_with_invalid_id() {
 
     assert_eq!(http_response.status(), StatusCode::OK);
     let rpc_response = from_http_response(http_response).await;
-    assert_eq!(rpc_response.id(), &Value::Null);
+    assert_eq!(rpc_response.id(), 1.1);
     assert_eq!(
-        rpc_response.error().unwrap(),
-        &Error::new(
-            ReservedErrorCode::InvalidRequest,
-            "'id' must not contain fractional parts if it is a number"
-        )
+        rpc_response.result(),
+        Some(GoodThing {
+            good_thing: "one".to_string()
+        })
     );
 }
 
@@ -195,21 +201,19 @@ async fn should_handle_request_with_no_id() {
 
     let filter = main_filter_with_recovery();
 
-    // This should get handled by `filters::handle_body` and return no JSON-RPC response, only an
-    // HTTP response (bad request) to the client as no ID was provided.
+    // A structurally valid request without an ID is a notification. It executes but has no body.
     let http_response = warp::test::request()
-        .body(r#"{"jsonrpc":"2.0","method":"get good thing","params":["one"]}"#)
+        .body(json!({"jsonrpc":"2.0","method":"get good thing","params":["one"]}).to_string())
         .filter(&filter)
         .await
         .unwrap()
         .into_response();
 
-    assert_eq!(http_response.status(), StatusCode::BAD_REQUEST);
-    let response_body = ResponseBodyOnRejection::from_response(http_response).await;
-    assert_eq!(
-        response_body.message,
-        "The request is missing the 'id' field"
-    );
+    assert_eq!(http_response.status(), StatusCode::NO_CONTENT);
+    let body = hyper::body::to_bytes(http_response.into_body())
+        .await
+        .unwrap();
+    assert!(body.is_empty());
 }
 
 #[tokio::test]
@@ -221,7 +225,10 @@ async fn should_handle_request_with_extra_field() {
     // This should get handled by `filters::handle_body` and return Response::Failure (invalid
     // request) to the client as the request has an extra field.
     let http_response = warp::test::request()
-        .body(r#"{"jsonrpc":"2.0","id":1,"method":"get good thing","params":[2],"extra":"field"}"#)
+        .body(
+            json!({"jsonrpc":"2.0","id":1,"method":"get good thing","params":[2],"extra":"field"})
+                .to_string(),
+        )
         .filter(&filter)
         .await
         .unwrap()
@@ -248,7 +255,7 @@ async fn should_handle_malformed_request_with_valid_id() {
     // This should get handled by `filters::handle_body` and return Response::Failure (invalid
     // request) to the client, but with the ID included in the response as it was able to be parsed.
     let http_response = warp::test::request()
-        .body(r#"{"jsonrpc":"2.0","id":1,"method":{"not":"a string"}}"#)
+        .body(json!({"jsonrpc":"2.0","id":1,"method":{"not":"a string"}}).to_string())
         .filter(&filter)
         .await
         .unwrap()
@@ -275,7 +282,7 @@ async fn should_handle_malformed_request_but_valid_json() {
     // This should get handled by `filters::handle_body` and return Response::Failure (invalid
     // request) to the client as it can't be parsed as a JSON-RPC request.
     let http_response = warp::test::request()
-        .body(r#"{"a":1}"#)
+        .body(json!({"a":1}).to_string())
         .filter(&filter)
         .await
         .unwrap()
@@ -315,4 +322,55 @@ async fn should_handle_invalid_json() {
             "expected value at line 1 column 1"
         )
     );
+}
+
+#[tokio::test]
+async fn should_return_an_array_for_a_mixed_batch() {
+    let filter = main_filter_with_recovery();
+    let http_response = warp::test::request()
+        .body(
+            json!([
+                {"jsonrpc":"2.0","id":1,"method":"get good thing","params":["one"]},
+                {"jsonrpc":"2.0","method":"get good thing","params":["notification"]},
+                false
+            ])
+            .to_string(),
+        )
+        .filter(&filter)
+        .await
+        .unwrap()
+        .into_response();
+
+    assert_eq!(http_response.status(), StatusCode::OK);
+    let body = hyper::body::to_bytes(http_response.into_body())
+        .await
+        .unwrap();
+    let responses: Vec<Response> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(responses.len(), 2);
+    assert_eq!(responses[0].id(), 1);
+    assert_eq!(responses[1].id(), &Value::Null);
+    assert_eq!(responses[1].error().unwrap().code(), -32600);
+}
+
+#[tokio::test]
+async fn should_return_no_content_for_an_all_notification_batch() {
+    let filter = main_filter_with_recovery();
+    let http_response = warp::test::request()
+        .body(
+            json!([
+                {"jsonrpc":"2.0","method":"get good thing","params":["one"]},
+                {"jsonrpc":"2.0","method":"get good thing","params":["two"]}
+            ])
+            .to_string(),
+        )
+        .filter(&filter)
+        .await
+        .unwrap()
+        .into_response();
+
+    assert_eq!(http_response.status(), StatusCode::NO_CONTENT);
+    let body = hyper::body::to_bytes(http_response.into_body())
+        .await
+        .unwrap();
+    assert!(body.is_empty());
 }

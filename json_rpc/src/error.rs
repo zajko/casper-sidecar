@@ -184,6 +184,7 @@ impl Error {
 #[cfg(test)]
 mod tests {
     use serde::ser::{Error as _, Serializer};
+    use serde_json::json;
 
     use super::*;
 
@@ -231,71 +232,87 @@ mod tests {
 
     #[test]
     fn should_construct_reserved_error() {
-        const EXPECTED_WITH_DATA: &str =
-            r#"{"code":-32700,"message":"Parse error","data":{"id":1314,"context":"TEST"}}"#;
-        const EXPECTED_WITHOUT_DATA: &str =
-            r#"{"code":-32601,"message":"Method not found","data":null}"#;
-        const EXPECTED_WITH_BAD_DATA: &str = r#"{"code":-32603,"message":"Internal error","data":"failed to json-encode additional info in json-rpc error: won't encode"}"#;
-
         let error_with_data = Error::new(
             ReservedErrorCode::ParseError,
             AdditionalInfo::test_default(),
         );
-        let encoded = serde_json::to_string(&error_with_data).unwrap();
-        assert_eq!(encoded, EXPECTED_WITH_DATA);
+        assert_eq!(
+            serde_json::to_value(error_with_data).unwrap(),
+            json!({
+                "code": -32700,
+                "message": "Parse error",
+                "data": {"id": 1314, "context": "TEST"},
+            })
+        );
 
         let error_without_data = Error::new(ReservedErrorCode::MethodNotFound, None::<u8>);
-        let encoded = serde_json::to_string(&error_without_data).unwrap();
-        assert_eq!(encoded, EXPECTED_WITHOUT_DATA);
+        assert_eq!(
+            serde_json::to_value(error_without_data).unwrap(),
+            json!({"code": -32601, "message": "Method not found", "data": null})
+        );
 
         let error_with_bad_data = Error::new(ReservedErrorCode::InvalidParams, FailToEncode);
-        let encoded = serde_json::to_string(&error_with_bad_data).unwrap();
-        assert_eq!(encoded, EXPECTED_WITH_BAD_DATA);
+        assert_eq!(
+            serde_json::to_value(error_with_bad_data).unwrap(),
+            json!({
+                "code": -32603,
+                "message": "Internal error",
+                "data": "failed to json-encode additional info in json-rpc error: won't encode",
+            })
+        );
     }
 
     #[test]
     fn should_construct_custom_error() {
-        const EXPECTED_WITH_DATA: &str =
-            r#"{"code":-123,"message":"Valid test error","data":{"id":1314,"context":"TEST"}}"#;
-        const EXPECTED_WITHOUT_DATA: &str =
-            r#"{"code":-123,"message":"Valid test error","data":null}"#;
-        const EXPECTED_WITH_BAD_DATA: &str = r#"{"code":-32603,"message":"Internal error","data":"failed to json-encode additional info in json-rpc error: won't encode"}"#;
-
         let good_error_code = TestErrorCode {
             in_reserved_range: false,
         };
 
         let error_with_data = Error::new(good_error_code, AdditionalInfo::test_default());
-        let encoded = serde_json::to_string(&error_with_data).unwrap();
-        assert_eq!(encoded, EXPECTED_WITH_DATA);
+        assert_eq!(
+            serde_json::to_value(error_with_data).unwrap(),
+            json!({
+                "code": -123,
+                "message": "Valid test error",
+                "data": {"id": 1314, "context": "TEST"},
+            })
+        );
 
         let error_without_data = Error::new(good_error_code, ());
-        let encoded = serde_json::to_string(&error_without_data).unwrap();
-        assert_eq!(encoded, EXPECTED_WITHOUT_DATA);
+        assert_eq!(
+            serde_json::to_value(error_without_data).unwrap(),
+            json!({"code": -123, "message": "Valid test error", "data": null})
+        );
 
         let error_with_bad_data = Error::new(good_error_code, FailToEncode);
-        let encoded = serde_json::to_string(&error_with_bad_data).unwrap();
-        assert_eq!(encoded, EXPECTED_WITH_BAD_DATA);
+        assert_eq!(
+            serde_json::to_value(error_with_bad_data).unwrap(),
+            json!({
+                "code": -32603,
+                "message": "Internal error",
+                "data": "failed to json-encode additional info in json-rpc error: won't encode",
+            })
+        );
     }
 
     #[test]
     fn should_fall_back_to_internal_error_on_bad_custom_error() {
-        const EXPECTED: &str = r#"{"code":-32603,"message":"Internal error","data":"attempted to return reserved error code -32603"}"#;
-
         let bad_error_code = TestErrorCode {
             in_reserved_range: true,
         };
+        let expected = json!({
+            "code": -32603,
+            "message": "Internal error",
+            "data": "attempted to return reserved error code -32603",
+        });
 
         let error_with_data = Error::new(bad_error_code, AdditionalInfo::test_default());
-        let encoded = serde_json::to_string(&error_with_data).unwrap();
-        assert_eq!(encoded, EXPECTED);
+        assert_eq!(serde_json::to_value(error_with_data).unwrap(), expected);
 
         let error_without_data = Error::new(bad_error_code, None::<u8>);
-        let encoded = serde_json::to_string(&error_without_data).unwrap();
-        assert_eq!(encoded, EXPECTED);
+        assert_eq!(serde_json::to_value(error_without_data).unwrap(), expected);
 
         let error_with_bad_data = Error::new(bad_error_code, FailToEncode);
-        let encoded = serde_json::to_string(&error_with_bad_data).unwrap();
-        assert_eq!(encoded, EXPECTED);
+        assert_eq!(serde_json::to_value(error_with_bad_data).unwrap(), expected);
     }
 }

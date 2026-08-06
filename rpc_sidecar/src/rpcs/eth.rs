@@ -47,5 +47,7 @@ pub use max_priority_fee_per_gas::MaxPriorityFeePerGas;
 pub use net_version::NetVersion;
 pub use new_filter::NewFilter;
 pub use send_raw_transaction::SendRawTransaction;
-pub(crate) use subscriptions::{WebSocketOriginPolicy, websocket_route};
+pub(crate) use subscriptions::{
+    SUBSCRIBE_METHOD, UNSUBSCRIBE_METHOD, WebSocketOriginPolicy, websocket_route,
+};
 pub use uninstall_filter::UninstallFilter;

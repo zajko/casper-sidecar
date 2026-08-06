@@ -1,12 +1,19 @@
-use casper_json_rpc::{ConfigLimit, nonzero_u32};
+use casper_json_rpc::{ConfigLimit, nonzero_u32, nonzero_u64};
 #[cfg(any(feature = "testing", test))]
-use casper_json_rpc::{DEFAULT_LIMIT_PERIOD, DEFAULT_LIMIT_REQUESTS};
+use casper_json_rpc::{
+    DEFAULT_LIMIT_PERIOD, DEFAULT_LIMIT_REQUESTS, DEFAULT_MAX_BATCH_ITEMS,
+    DEFAULT_MAX_BATCH_RESPONSE_BYTES,
+};
 use casper_types::TimeDiff;
 use datasize::DataSize;
 use serde::Deserialize;
 #[cfg(any(feature = "testing", test))]
 use std::net::Ipv4Addr;
-use std::{collections::HashMap, net::IpAddr, num::NonZeroU32};
+use std::{
+    collections::HashMap,
+    net::IpAddr,
+    num::{NonZeroU32, NonZeroU64},
+};
 use thiserror::Error;
 
 use crate::SpeculativeExecConfig;
@@ -79,6 +86,12 @@ pub struct RpcConfig {
     pub qps_limit: NonZeroU32,
     /// Maximum number of bytes to accept in a single request body.
     pub max_body_bytes: u64,
+    /// Maximum number of entries accepted in one JSON-RPC batch.
+    #[data_size(with = nonzero_u32)]
+    pub max_batch_items: NonZeroU32,
+    /// Soft maximum size of a serialized JSON-RPC batch response.
+    #[data_size(with = nonzero_u64)]
+    pub max_batch_response_bytes: NonZeroU64,
     /// CORS origin.
     pub cors_origin: String,
     /// Default value for limiter's number of requests.
@@ -113,6 +126,8 @@ impl RpcConfig {
             port: DEFAULT_PORT,
             qps_limit: DEFAULT_QPS_LIMIT,
             max_body_bytes: DEFAULT_MAX_BODY_BYTES,
+            max_batch_items: DEFAULT_MAX_BATCH_ITEMS,
+            max_batch_response_bytes: DEFAULT_MAX_BATCH_RESPONSE_BYTES,
             cors_origin: DEFAULT_CORS_ORIGIN,
             default_limit_requests: DEFAULT_LIMIT_REQUESTS,
             default_limit_period: DEFAULT_LIMIT_PERIOD,

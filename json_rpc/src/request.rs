@@ -2,12 +2,10 @@ mod params;
 
 use itertools::Itertools;
 use serde_json::{Map, Value};
-use warp::reject::{self, Rejection};
 
 use crate::{
     JSON_RPC_VERSION,
     error::{Error, ReservedErrorCode},
-    rejections::MissingId,
 };
 pub use params::Params;
 
@@ -16,37 +14,27 @@ const METHOD_FIELD_NAME: &str = "method";
 const PARAMS_FIELD_NAME: &str = "params";
 const ID_FIELD_NAME: &str = "id";
 
-/// Errors are returned to the client as a JSON-RPC response and HTTP 200 (OK), whereas rejections
-/// cause no JSON-RPC response to be sent, but an appropriate HTTP 4xx error will be returned.
 #[derive(Debug)]
-pub(crate) enum ErrorOrRejection {
-    Error { id: Value, error: Error },
-    Rejection(Rejection),
+pub(crate) struct RequestError {
+    pub(crate) id: Value,
+    pub(crate) error: Error,
 }
 
 /// A request which has been validated as conforming to the JSON-RPC specification.
 pub(crate) struct Request {
-    pub id: Value,
+    pub id: Option<Value>,
     pub method: String,
     pub params: Option<Params>,
 }
 
-/// Returns `Ok` if `id` is a String, Null or a Number with no fractional part.
+/// Returns `Ok` if `id` is a String, Null or Number.
 fn is_valid(id: &Value) -> Result<(), Error> {
     match id {
-        Value::String(_) | Value::Null => (),
-        Value::Number(number) => {
-            if number.is_f64() {
-                return Err(Error::new(
-                    ReservedErrorCode::InvalidRequest,
-                    "'id' must not contain fractional parts if it is a number",
-                ));
-            }
-        }
+        Value::String(_) | Value::Null | Value::Number(_) => (),
         _ => {
             return Err(Error::new(
                 ReservedErrorCode::InvalidRequest,
-                "'id' should be a string or integer",
+                "'id' should be a string, number or null",
             ));
         }
     }
@@ -61,19 +49,26 @@ impl Request {
     ///   * "jsonrpc" field is not "2.0"
     ///   * "method" field is not a String
     ///   * "params" field is present, but is not an Array or Object
-    ///   * "id" field is not a String, valid Number or Null
-    ///   * "id" field is a Number with fractional part
+    ///   * "id" field is not a String, Number or Null
     ///   * `allow_unknown_fields` is `false` and extra fields exist
-    ///
-    /// Returns a `Rejection` if the "id" field is `None`.
     #[allow(clippy::result_large_err)]
     pub(super) fn new(
         mut request: Map<String, Value>,
         allow_unknown_fields: bool,
-    ) -> Result<Self, ErrorOrRejection> {
-        // Just copy "id" field for now to return verbatim in any errors before we get to actually
-        // validating the "id" field itself.
-        let id = request.get(ID_FIELD_NAME).cloned().unwrap_or_default();
+    ) -> Result<Self, RequestError> {
+        let id = request.remove(ID_FIELD_NAME);
+        if let Some(id) = &id {
+            is_valid(id).map_err(|error| RequestError {
+                id: Value::Null,
+                error,
+            })?;
+        }
+        let response_id = id.clone().unwrap_or(Value::Null);
+
+        let invalid_request = |error| RequestError {
+            id: response_id.clone(),
+            error,
+        };
 
         match request.remove(JSONRPC_FIELD_NAME) {
             Some(Value::String(jsonrpc)) => {
@@ -82,7 +77,7 @@ impl Request {
                         ReservedErrorCode::InvalidRequest,
                         format!("Expected 'jsonrpc' to be '2.0', but got '{jsonrpc}'"),
                     );
-                    return Err(ErrorOrRejection::Error { id, error });
+                    return Err(invalid_request(error));
                 }
             }
             Some(Value::Number(jsonrpc)) => {
@@ -92,7 +87,7 @@ impl Request {
                         "Expected 'jsonrpc' to be a String with value '2.0', but got a Number '{jsonrpc}'"
                     ),
                 );
-                return Err(ErrorOrRejection::Error { id, error });
+                return Err(invalid_request(error));
             }
             Some(jsonrpc) => {
                 let error = Error::new(
@@ -101,14 +96,14 @@ impl Request {
                         "Expected 'jsonrpc' to be a String with value '2.0', but got '{jsonrpc}'"
                     ),
                 );
-                return Err(ErrorOrRejection::Error { id, error });
+                return Err(invalid_request(error));
             }
             None => {
                 let error = Error::new(
                     ReservedErrorCode::InvalidRequest,
                     format!("Missing '{JSONRPC_FIELD_NAME}' field"),
                 );
-                return Err(ErrorOrRejection::Error { id, error });
+                return Err(invalid_request(error));
             }
         }
 
@@ -119,31 +114,22 @@ impl Request {
                     ReservedErrorCode::InvalidRequest,
                     format!("Expected '{METHOD_FIELD_NAME}' to be a String"),
                 );
-                return Err(ErrorOrRejection::Error { id, error });
+                return Err(invalid_request(error));
             }
             None => {
                 let error = Error::new(
                     ReservedErrorCode::InvalidRequest,
                     format!("Missing '{METHOD_FIELD_NAME}' field"),
                 );
-                return Err(ErrorOrRejection::Error { id, error });
+                return Err(invalid_request(error));
             }
         };
 
         let params = match request.remove(PARAMS_FIELD_NAME) {
-            Some(unvalidated_params) => Some(Params::try_from(&id, unvalidated_params)?),
-            None => None,
-        };
-
-        let id = match request.remove(ID_FIELD_NAME) {
-            Some(id) => {
-                is_valid(&id).map_err(|error| ErrorOrRejection::Error {
-                    id: Value::Null,
-                    error,
-                })?;
-                id
+            Some(unvalidated_params) => {
+                Some(Params::try_from(unvalidated_params).map_err(invalid_request)?)
             }
-            None => return Err(ErrorOrRejection::Rejection(reject::custom(MissingId))),
+            None => None,
         };
 
         if !allow_unknown_fields && !request.is_empty() {
@@ -152,10 +138,10 @@ impl Request {
                 format!(
                     "Unexpected field{}: {}",
                     if request.len() > 1 { "s" } else { "" },
-                    request.keys().map(|f| format!("'{f}'")).join(", ")
+                    request.keys().sorted().map(|f| format!("'{f}'")).join(", ")
                 ),
             );
-            return Err(ErrorOrRejection::Error { id, error });
+            return Err(invalid_request(error));
         }
 
         Ok(Request { id, method, params })
@@ -185,7 +171,7 @@ mod tests {
             .unwrap();
 
             let request = Request::new(unvalidated, false).unwrap();
-            assert_eq!(request.id, id);
+            assert_eq!(request.id, Some(id));
             assert_eq!(request.method, method);
             assert_eq!(request.params.unwrap(), Params::Array(params_inner));
         }
@@ -206,7 +192,7 @@ mod tests {
         .cloned()
         .unwrap();
 
-        let Err(ErrorOrRejection::Error {
+        let Err(RequestError {
             id: Value::Null,
             error,
         }) = Request::new(request, false)
@@ -217,13 +203,13 @@ mod tests {
             error,
             Error::new(
                 ReservedErrorCode::InvalidRequest,
-                "'id' should be a string or integer"
+                "'id' should be a string, number or null"
             )
         );
     }
 
     #[test]
-    fn should_fail_to_validate_id_with_fractional_part() {
+    fn should_validate_id_with_fractional_part() {
         let request = json!({
             JSONRPC_FIELD_NAME: JSON_RPC_VERSION,
             ID_FIELD_NAME: 1.1,
@@ -233,24 +219,12 @@ mod tests {
         .cloned()
         .unwrap();
 
-        let Err(ErrorOrRejection::Error {
-            id: Value::Null,
-            error,
-        }) = Request::new(request, false)
-        else {
-            panic!("should be error");
-        };
-        assert_eq!(
-            error,
-            Error::new(
-                ReservedErrorCode::InvalidRequest,
-                "'id' must not contain fractional parts if it is a number"
-            )
-        );
+        let request = Request::new(request, false).unwrap();
+        assert_eq!(request.id, Some(json!(1.1)));
     }
 
     #[test]
-    fn should_reject_with_missing_id() {
+    fn should_validate_missing_id_as_notification() {
         let request = json!({
             JSONRPC_FIELD_NAME: JSON_RPC_VERSION,
             METHOD_FIELD_NAME: "a",
@@ -259,10 +233,8 @@ mod tests {
         .cloned()
         .unwrap();
 
-        match Request::new(request, false) {
-            Err(ErrorOrRejection::Rejection(_)) => (),
-            _ => panic!("should be rejection"),
-        };
+        let request = Request::new(request, false).unwrap();
+        assert_eq!(request.id, None);
     }
 
     #[test]
@@ -277,7 +249,7 @@ mod tests {
         .unwrap();
 
         let error = match Request::new(request, false) {
-            Err(ErrorOrRejection::Error {
+            Err(RequestError {
                 id: Value::String(id),
                 error,
             }) if id == "a" => error,
@@ -304,7 +276,7 @@ mod tests {
         .unwrap();
 
         let error = match Request::new(request, false) {
-            Err(ErrorOrRejection::Error {
+            Err(RequestError {
                 id: Value::String(id),
                 error,
             }) if id == "a" => error,
@@ -330,7 +302,7 @@ mod tests {
         .unwrap();
 
         let error = match Request::new(request, false) {
-            Err(ErrorOrRejection::Error {
+            Err(RequestError {
                 id: Value::String(id),
                 error,
             }) if id == "a" => error,
@@ -354,7 +326,7 @@ mod tests {
         .unwrap();
 
         let error = match Request::new(request, false) {
-            Err(ErrorOrRejection::Error {
+            Err(RequestError {
                 id: Value::String(id),
                 error,
             }) if id == "a" => error,
@@ -380,7 +352,7 @@ mod tests {
         .unwrap();
 
         let error = match Request::new(request, false) {
-            Err(ErrorOrRejection::Error {
+            Err(RequestError {
                 id: Value::String(id),
                 error,
             }) if id == "a" => error,
@@ -405,7 +377,7 @@ mod tests {
         .unwrap();
 
         let error = match Request::new(request, false) {
-            Err(ErrorOrRejection::Error {
+            Err(RequestError {
                 id: Value::String(id),
                 error,
             }) if id == "a" => error,
@@ -443,7 +415,7 @@ mod tests {
     fn should_fail_to_validate_with_extra_fields_if_disallowed() {
         let request = request_with_extra_fields();
         let error = match Request::new(request, false) {
-            Err(ErrorOrRejection::Error {
+            Err(RequestError {
                 id: Value::String(id),
                 error,
             }) if id == "a" => error,

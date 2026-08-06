@@ -9,6 +9,22 @@ All notable changes to this project will be documented in this file. The format 
 [comment]: <> (Fixed: any bug fixes)
 [comment]: <> (Security: in case of vulnerabilities)
 
+## [Unreleased]
+
+### Added
+
+- Added JSON-RPC 2.0 batch and notification support to HTTP and WebSocket transports, including
+  mixed `eth_subscribe` and `eth_unsubscribe` batches.
+- Added configurable batch item and soft response-size limits with metrics for batch size and
+  limit enforcement.
+
+### Changed
+
+- Bumped `casper-json-rpc` to 3.0.0 with `JsonRpcOutput`, `JsonRpcOptions`, `Notification`, and the
+  async `RequestDispatcher` API.
+- JSON-RPC requests now accept fractional number IDs, distinguish missing IDs from explicit null
+  IDs, and reject `params: null` in favor of omitted parameters or an empty array.
+
 ## [2.1.0]
 
 ### Added

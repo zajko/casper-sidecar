@@ -1,6 +1,11 @@
-use std::{collections::HashMap, net::IpAddr, num::NonZeroU32, sync::Arc};
+use std::{
+    collections::HashMap,
+    net::IpAddr,
+    num::{NonZeroU32, NonZeroU64},
+    sync::Arc,
+};
 
-use casper_json_rpc::{ConfigLimit, CorsOrigin, RequestHandlersBuilder};
+use casper_json_rpc::{ConfigLimit, CorsOrigin, JsonRpcOptions, RequestHandlersBuilder};
 
 use crate::{
     node_client::NodeClient,
@@ -25,6 +30,8 @@ pub async fn run(
     mut limits: HashMap<String, ConfigLimit>,
     qps_limit: NonZeroU32,
     max_body_bytes: u64,
+    max_batch_items: NonZeroU32,
+    max_batch_response_bytes: NonZeroU64,
     cors_origin: String,
 ) {
     let mut handlers = RequestHandlersBuilder::new();
@@ -41,6 +48,11 @@ pub async fn run(
     register!(SpeculativeRpcDiscover);
 
     let handlers = handlers.build();
+    let json_rpc_options = JsonRpcOptions {
+        allow_unknown_fields: true,
+        max_batch_items,
+        max_batch_response_bytes,
+    };
 
     match cors_origin.as_str() {
         "" => {
@@ -50,6 +62,7 @@ pub async fn run(
                 handlers,
                 qps_limit,
                 max_body_bytes,
+                json_rpc_options,
                 SPECULATIVE_EXEC_API_PATH,
                 SPECULATIVE_EXEC_SERVER_NAME,
             )
@@ -62,6 +75,7 @@ pub async fn run(
                 handlers,
                 qps_limit,
                 max_body_bytes,
+                json_rpc_options,
                 SPECULATIVE_EXEC_API_PATH,
                 SPECULATIVE_EXEC_SERVER_NAME,
                 CorsOrigin::Any,
@@ -75,6 +89,7 @@ pub async fn run(
                 handlers,
                 qps_limit,
                 max_body_bytes,
+                json_rpc_options,
                 SPECULATIVE_EXEC_API_PATH,
                 SPECULATIVE_EXEC_SERVER_NAME,
                 CorsOrigin::Specified(cors_origin),

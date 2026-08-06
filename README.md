@@ -202,6 +202,8 @@ ip_address = '0.0.0.0'
 port = 7777
 qps_limit = 100
 max_body_bytes = 2_621_440
+max_batch_items = 100
+max_batch_response_bytes = 25_000_000
 max_eth_log_block_range = 10_000
 cors_origin = ''
 default_limit_requests = 100
@@ -221,6 +223,8 @@ ip_address = '0.0.0.0'
 port = 7778
 qps_limit = 1
 max_body_bytes = 2_621_440
+max_batch_items = 100
+max_batch_response_bytes = 25_000_000
 cors_origin = ''
 
 
@@ -237,6 +241,8 @@ max_attempts = 30
 - `main_server.port` - Port under which the main RPC API server will be available.
 - `main_server.qps_limit` - The maximum number of requests per second.
 - `main_server.max_body_bytes` - Maximum body size of request to API in bytes.
+- `main_server.max_batch_items` - Maximum number of calls, notifications, and invalid entries accepted in one JSON-RPC batch.
+- `main_server.max_batch_response_bytes` - Soft maximum serialized JSON-RPC batch response size.
 - `main_server.max_eth_log_block_range` - optional (default `10_000`). Maximum number of blocks an Ethereum log query or subscription catch-up range can scan.
 - `main_server.cors_origin` - Configures the CORS origin.
 - `main_server.default_limit_requests` - Default limit for the JSON-RPC per action limitation: maximum requests permitted for one action in a period of time
@@ -247,6 +253,8 @@ max_attempts = 30
 - `speculative_exec_server.port` - port under which the speculative RPC API server will be available.
 - `speculative_exec_server.qps_limit` - The maximum number of requests per second.
 - `speculative_exec_server.max_body_bytes` - Maximum body size of request to API in bytes.
+- `speculative_exec_server.max_batch_items` - Maximum number of entries accepted in one JSON-RPC batch.
+- `speculative_exec_server.max_batch_response_bytes` - Soft maximum serialized JSON-RPC batch response size.
 - `speculative_exec_server.cors_origin` - Configures the CORS origin.
 - `speculative_exec_server.default_limit_requests` - Default limit for the JSON-RPC per action limitation: maximum requests permitted for one action in a period of time
 - `speculative_exec_server.default_limit_period` - Default period of time for the JSON-RPC request limit in human-readable format
@@ -261,6 +269,17 @@ max_attempts = 30
 - `node_client.exponential_backoff.max_delay_ms` - Maximum timeout after a broken connection in milliseconds.
 - `node_client.exponential_backoff.coefficient` - Coefficient for the exponential backoff. The next timeout is calculated as min(`current_timeout * coefficient`, `max_delay_ms`).
 - `node_client.exponential_backoff.max_attempts` - Maximum number of times to try to reconnect to the binary port of the node.
+
+### JSON-RPC batches and notifications
+
+The HTTP and Ethereum WebSocket endpoints accept JSON-RPC 2.0 batch envelopes, including mixed
+calls and notifications. This allows clients such as ethers v6 to use their default batching
+configuration; `batchMaxCount: 1` is no longer required. A valid request with no `id` executes as a
+notification and produces HTTP `204 No Content` or no WebSocket frame. An explicit `id: null`
+still receives a response.
+
+Clients must omit `params` or send `params: []` for parameterless methods. The wire value
+`params: null` is rejected as an invalid request.
 
 #### Prefetching blocks feature
 

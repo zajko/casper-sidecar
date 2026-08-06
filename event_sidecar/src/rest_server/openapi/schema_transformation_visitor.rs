@@ -127,96 +127,144 @@ fn force_schema_into_opean_api_nullable(schema: &mut SchemaObject) {
 mod tests {
     use super::SchemaTransformationVisitor;
     use schemars::{schema::Schema, visit::Visitor};
+    use serde_json::{Value, json};
 
     #[test]
     fn should_change_bool_requirement_into_schema_object() {
-        let json_schema = r#"{
+        let json_schema = json!({
             "$id": "https://example.com/person.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
-            "properties": {
-                "firstName": true
-            },
-            "additionalProperties": true
-        }"#;
+            "properties": {"firstName": true},
+            "additionalProperties": true,
+        });
         let mut visitor = SchemaTransformationVisitor {
             skip_additional_properties: false,
         };
         let transformed = transform_schema(json_schema, &mut visitor);
-        let expected = "{\n  \"$id\": \"https://example.com/person.schema.json\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"firstName\": {\n      \"type\": \"value\"\n    }\n  },\n  \"additionalProperties\": {\n    \"type\": \"value\"\n  },\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\"\n}".to_string();
+        let expected = json!({
+            "$id": "https://example.com/person.schema.json",
+            "type": "object",
+            "properties": {"firstName": {"type": "value"}},
+            "additionalProperties": {"type": "value"},
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+        });
         assert_eq!(transformed, expected);
     }
 
     #[test]
     fn should_not_change_additional_properties_if_flag_is_set() {
-        let json_schema = r#"{
+        let json_schema = json!({
             "$id": "https://example.com/person.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
-            "additionalProperties": true
-        }"#;
+            "additionalProperties": true,
+        });
         let mut visitor = SchemaTransformationVisitor {
             skip_additional_properties: true,
         };
         let transformed = transform_schema(json_schema, &mut visitor);
-        let expected = "{\n  \"$id\": \"https://example.com/person.schema.json\",\n  \"type\": \"object\",\n  \"additionalProperties\": true,\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\"\n}".to_string();
+        let expected = json!({
+            "$id": "https://example.com/person.schema.json",
+            "type": "object",
+            "additionalProperties": true,
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+        });
         assert_eq!(transformed, expected);
     }
 
     #[test]
     fn should_change_multiple_types_in_object_to_any_of() {
-        let json_schema = r#"{
+        let json_schema = json!({
             "$id": "https://example.com/person.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": ["string", "number", "object"],
-            "properties": {
-              "x": {"type": "string"}
-            },
+            "properties": {"x": {"type": "string"}},
             "required": ["x"],
-            "additionalProperties": true
-        }"#;
+            "additionalProperties": true,
+        });
         let mut visitor = SchemaTransformationVisitor {
             skip_additional_properties: true,
         };
         let transformed = transform_schema(json_schema, &mut visitor);
-        let expected = "{\n  \"anyOf\": [\n    {\n      \"$id\": \"https://example.com/person.schema.json\",\n      \"type\": \"string\",\n      \"required\": [\n        \"x\"\n      ],\n      \"properties\": {\n        \"x\": {\n          \"type\": \"string\"\n        }\n      },\n      \"additionalProperties\": true,\n      \"$schema\": \"https://json-schema.org/draft/2020-12/schema\"\n    },\n    {\n      \"$id\": \"https://example.com/person.schema.json\",\n      \"type\": \"number\",\n      \"required\": [\n        \"x\"\n      ],\n      \"properties\": {\n        \"x\": {\n          \"type\": \"string\"\n        }\n      },\n      \"additionalProperties\": true,\n      \"$schema\": \"https://json-schema.org/draft/2020-12/schema\"\n    },\n    {\n      \"$id\": \"https://example.com/person.schema.json\",\n      \"type\": \"object\",\n      \"required\": [\n        \"x\"\n      ],\n      \"properties\": {\n        \"x\": {\n          \"type\": \"string\"\n        }\n      },\n      \"additionalProperties\": true,\n      \"$schema\": \"https://json-schema.org/draft/2020-12/schema\"\n    }\n  ]\n}".to_string();
+        let schema_for_type = |schema_type| {
+            json!({
+                "$id": "https://example.com/person.schema.json",
+                "type": schema_type,
+                "required": ["x"],
+                "properties": {"x": {"type": "string"}},
+                "additionalProperties": true,
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+            })
+        };
+        let expected = json!({
+            "anyOf": [
+                schema_for_type("string"),
+                schema_for_type("number"),
+                schema_for_type("object"),
+            ],
+        });
         assert_eq!(transformed, expected);
     }
 
     #[test]
     fn should_change_null_type_into_nullable() {
-        let json_schema = r#"{
+        let json_schema = json!({
             "$id": "https://example.com/person.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "type": "null"
-        }"#;
+            "type": "null",
+        });
         let mut visitor = SchemaTransformationVisitor {
             skip_additional_properties: true,
         };
         let transformed = transform_schema(json_schema, &mut visitor);
-        let expected = "{\n  \"$id\": \"https://example.com/person.schema.json\",\n  \"type\": \"object\",\n  \"minProperties\": 1,\n  \"additionalProperties\": false,\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"nullable\": true\n}".to_string();
+        let expected = json!({
+            "$id": "https://example.com/person.schema.json",
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": false,
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "nullable": true,
+        });
         assert_eq!(transformed, expected);
     }
 
     #[test]
     fn should_change_null_type_into_nullable_if_multiple_types() {
-        let json_schema = r#"{
+        let json_schema = json!({
             "$id": "https://example.com/person.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": ["null", "object"],
-            "properties": {"x": true}
-        }"#;
+            "properties": {"x": true},
+        });
         let mut visitor = SchemaTransformationVisitor {
             skip_additional_properties: true,
         };
         let transformed = transform_schema(json_schema, &mut visitor);
-        let expected = "{\n  \"anyOf\": [\n    {\n      \"$id\": \"https://example.com/person.schema.json\",\n      \"type\": \"object\",\n      \"minProperties\": 1,\n      \"additionalProperties\": false,\n      \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n      \"nullable\": true\n    },\n    {\n      \"$id\": \"https://example.com/person.schema.json\",\n      \"type\": \"object\",\n      \"properties\": {\n        \"x\": {\n          \"type\": \"value\"\n        }\n      },\n      \"$schema\": \"https://json-schema.org/draft/2020-12/schema\"\n    }\n  ]\n}".to_string();
+        let expected = json!({
+            "anyOf": [
+                {
+                    "$id": "https://example.com/person.schema.json",
+                    "type": "object",
+                    "minProperties": 1,
+                    "additionalProperties": false,
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "nullable": true,
+                },
+                {
+                    "$id": "https://example.com/person.schema.json",
+                    "type": "object",
+                    "properties": {"x": {"type": "value"}},
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                },
+            ],
+        });
         assert_eq!(transformed, expected);
     }
 
-    fn transform_schema(schema: &str, visitor: &mut SchemaTransformationVisitor) -> String {
-        let mut obj = serde_json::from_str::<Schema>(schema).unwrap();
+    fn transform_schema(schema: Value, visitor: &mut SchemaTransformationVisitor) -> Value {
+        let mut obj = serde_json::from_value::<Schema>(schema).unwrap();
         visitor.visit_schema(&mut obj);
-        serde_json::to_string_pretty(&obj).unwrap()
+        serde_json::to_value(obj).unwrap()
     }
 }

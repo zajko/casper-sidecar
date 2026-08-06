@@ -9,6 +9,7 @@ use crate::types::{
 use async_trait::async_trait;
 use casper_types::{AsymmetricType, FinalitySignature as FinSig, testing::TestRng};
 use rand::Rng;
+use serde_json::json;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -363,7 +364,7 @@ impl DatabaseWriter for FakeDatabase {
             .expect("Time went backwards")
             .as_secs();
         let event_key = format!("{event_source_address}-{unix_timestamp}");
-        let stringified_event = serde_json::to_string("{}").expect("Error serialising event data");
+        let stringified_event = json!({}).to_string();
 
         data.insert(event_key, stringified_event);
         Ok(0)

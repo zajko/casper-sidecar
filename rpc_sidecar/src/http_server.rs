@@ -1,7 +1,14 @@
-use std::{collections::HashMap, net::IpAddr, num::NonZeroU32, sync::Arc};
+use std::{
+    collections::HashMap,
+    net::IpAddr,
+    num::{NonZeroU32, NonZeroU64},
+    sync::Arc,
+};
 
 use casper_event_types::SidecarEvent;
-use casper_json_rpc::{ConfigLimit, CorsOrigin, RequestHandlersBuilder};
+use casper_json_rpc::{
+    ConfigLimit, CorsOrigin, JsonRpcOptions, MethodLimiter, RequestHandlersBuilder,
+};
 use tokio::sync::broadcast::Sender as BroadcastSender;
 
 use super::rpcs::{
@@ -20,8 +27,8 @@ use super::rpcs::{
         GetLogs as EthGetLogs, GetTransactionCount as EthGetTransactionCount,
         GetTransactionReceipt as EthGetTransactionReceipt,
         MaxPriorityFeePerGas as EthMaxPriorityFeePerGas, NetVersion as EthNetVersion,
-        NewFilter as EthNewFilter, SendRawTransaction as EthSendRawTransaction,
-        UninstallFilter as EthUninstallFilter,
+        NewFilter as EthNewFilter, SUBSCRIBE_METHOD, SendRawTransaction as EthSendRawTransaction,
+        UNSUBSCRIBE_METHOD, UninstallFilter as EthUninstallFilter,
     },
     info::{GetChainspec, GetDeploy, GetValidatorChanges},
     state::{
@@ -53,6 +60,8 @@ pub async fn run(
     mut limits: HashMap<String, ConfigLimit>,
     qps_limit: NonZeroU32,
     max_body_bytes: u64,
+    max_batch_items: NonZeroU32,
+    max_batch_response_bytes: NonZeroU64,
     max_eth_log_block_range: u64,
     cors_origin: String,
 ) {
@@ -135,12 +144,26 @@ pub async fn run(
     );
     register_with_context!(EthUninstallFilter, eth_filter_state.clone());
 
+    let subscribe_limit = limits
+        .remove(SUBSCRIBE_METHOD)
+        .unwrap_or(default_limit.clone());
+    let unsubscribe_limit = limits
+        .remove(UNSUBSCRIBE_METHOD)
+        .unwrap_or(default_limit.clone());
+    let subscribe_limiter = MethodLimiter::new(&subscribe_limit);
+    let unsubscribe_limiter = MethodLimiter::new(&unsubscribe_limit);
+
     let handlers = handlers.build();
 
     let cors_header = match cors_origin.as_str() {
         "" => None,
         "*" => Some(CorsOrigin::Any),
         _ => Some(CorsOrigin::Specified(cors_origin)),
+    };
+    let json_rpc_options = JsonRpcOptions {
+        allow_unknown_fields: true,
+        max_batch_items,
+        max_batch_response_bytes,
     };
     super::rpcs::run_with_websocket(
         ip_address,
@@ -150,10 +173,13 @@ pub async fn run(
         sidecar_event_sender,
         qps_limit,
         max_body_bytes,
+        json_rpc_options,
         RPC_API_PATH,
         RPC_API_SERVER_NAME,
         max_eth_log_block_range,
         cors_header,
+        subscribe_limiter,
+        unsubscribe_limiter,
     )
     .await;
 }

@@ -1,0 +1,11 @@
+{
+  "name": "casper-sidecar-ethers-v6-batch-test",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node batch.mjs"
+  },
+  "dependencies": {
+    "ethers": "6.15.0"
+  }
+}

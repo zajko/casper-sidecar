@@ -1,6 +1,6 @@
 [package]
 name = "casper-json-rpc"
-version = "2.0.0"
+version = "3.0.0"
 authors = ["Jakub Zajkowski <jakub@casper.network>"]
 edition = "2024"
 description = "A library suitable for use as the framework for a JSON-RPC server."
@@ -20,7 +20,7 @@ http = "0.2"
 itertools = { workspace = true }
 metrics = { workspace = true }
 serde = { workspace = true, default-features = true, features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+serde_json = { version = "^1.0.149", features = ["arbitrary_precision", "preserve_order"] }
 tracing = { workspace = true, default-features = true }
 warp = { workspace = true }
 
