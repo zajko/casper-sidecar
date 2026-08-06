@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node batch.mjs"
+    "test": "node batch.mjs",
+    "test:transaction": "node transaction.mjs"
   },
   "dependencies": {
     "ethers": "6.15.0"

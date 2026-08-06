@@ -25,7 +25,8 @@ use super::{
         GetBalance as EthGetBalance, GetBlockByHash as EthGetBlockByHash,
         GetBlockByNumber as EthGetBlockByNumber, GetCode as EthGetCode,
         GetFilterChanges as EthGetFilterChanges, GetFilterLogs as EthGetFilterLogs,
-        GetLogs as EthGetLogs, GetTransactionCount as EthGetTransactionCount,
+        GetLogs as EthGetLogs, GetTransactionByHash as EthGetTransactionByHash,
+        GetTransactionCount as EthGetTransactionCount,
         GetTransactionReceipt as EthGetTransactionReceipt,
         MaxPriorityFeePerGas as EthMaxPriorityFeePerGas, NetVersion as EthNetVersion,
         NewFilter as EthNewFilter, SendRawTransaction as EthSendRawTransaction,
@@ -132,6 +133,9 @@ fn build_open_rpc_schema() -> OpenRpcSchema {
     schema.push_with_params::<EthGetTransactionCount>("returns an EVM account nonce");
     schema.push_with_params::<EthSendRawTransaction>(
         "submits a signed Ethereum transaction as a Casper EVM transaction",
+    );
+    schema.push_with_params::<EthGetTransactionByHash>(
+        "returns an Ethereum-compatible pending or block-included EVM transaction by hash",
     );
     schema.push_with_params::<EthGetTransactionReceipt>(
         "returns an Ethereum-compatible receipt for an executed EVM transaction",
@@ -679,6 +683,12 @@ mod tests {
             schema
                 .methods
                 .iter()
+                .any(|method| method.name == "eth_getTransactionByHash")
+        );
+        assert!(
+            schema
+                .methods
+                .iter()
                 .any(|method| method.name == "eth_getBalance")
         );
         assert!(
@@ -723,6 +733,11 @@ mod tests {
                 .iter()
                 .any(|method| method.name == "eth_estimateGas")
         );
-        serde_json::to_string(&schema).expect("OpenRPC schema should serialize");
+        let schema_value = serde_json::to_value(&schema).expect("OpenRPC schema should serialize");
+        let transaction_union = schema_value
+            .pointer("/components/schemas/TransactionResponse/anyOf")
+            .and_then(Value::as_array)
+            .expect("transaction response should be represented as a schema union");
+        assert_eq!(transaction_union.len(), 4);
     }
 }

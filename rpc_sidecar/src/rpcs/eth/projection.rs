@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     super::NodeClient,
     eth_u256::EthU256,
+    transaction_response::{BlockTransactions, TransactionLocation, project_transaction},
     types::{EthAddress, HexData, block_hash_to_evm_hash, internal_error},
 };
 
@@ -67,7 +68,7 @@ pub(crate) struct ProjectedBlock {
     pub(crate) logs_bloom: HexData,
     pub(crate) gas_used: EthU256,
     pub(crate) timestamp: EthU256,
-    pub(crate) transactions: Vec<evm::Hash>,
+    pub(crate) transactions: BlockTransactions,
     pub(crate) receipts: Vec<ProjectedReceipt>,
 }
 
@@ -113,6 +114,7 @@ pub(crate) async fn project_transaction_receipt(
     let block = project_block(
         node_client,
         Some(BlockIdentifier::Hash(execution_info.block_hash)),
+        false,
     )
     .await?
     .ok_or_else(|| internal_error("receipt block was not found"))?;
@@ -126,6 +128,7 @@ pub(crate) async fn project_transaction_receipt(
 pub(crate) async fn project_block(
     node_client: Arc<dyn NodeClient>,
     identifier: Option<BlockIdentifier>,
+    full_transactions: bool,
 ) -> Result<Option<ProjectedBlock>, RpcError> {
     let Some(block_with_signatures) = node_client
         .read_block_with_signatures(identifier)
@@ -154,7 +157,8 @@ pub(crate) async fn project_block(
     let mut block_alloy_logs = Vec::new();
     let mut alloy_receipts = Vec::new();
     let mut receipts = Vec::new();
-    let mut transactions = Vec::new();
+    let mut transaction_hashes = Vec::new();
+    let mut transaction_responses = full_transactions.then(Vec::new);
 
     for (transaction_index, evm_transaction_hash) in evm_hashes.iter().copied().enumerate() {
         let transaction_hash = TransactionHash::from(evm_transaction_hash);
@@ -183,11 +187,22 @@ pub(crate) async fn project_block(
                 "block EVM transaction hash resolved to non-EVM transaction",
             ));
         };
+        if evm_transaction.hash() != evm_transaction_hash {
+            return Err(internal_error(
+                "block EVM transaction lookup returned a different stored transaction hash",
+            ));
+        }
         let ExecutionResult::Evm(evm_execution_result) = execution_result else {
             return Err(internal_error(
                 "block EVM transaction resolved to non-EVM execution result",
             ));
         };
+        if execution_info.block_hash != *block.hash() || execution_info.block_height != block_number
+        {
+            return Err(internal_error(
+                "block EVM transaction execution info identifies a different block",
+            ));
+        }
 
         let receipt = &evm_execution_result.receipt;
         cumulative_gas_used = cumulative_gas_used.saturating_add(receipt.gas_used);
@@ -229,7 +244,18 @@ pub(crate) async fn project_block(
             alloy_receipt,
         )?);
 
-        transactions.push(transaction_hash);
+        transaction_hashes.push(transaction_hash);
+        if let Some(transaction_responses) = transaction_responses.as_mut() {
+            transaction_responses.push(project_transaction(
+                &evm_transaction,
+                TransactionLocation::BlockIncluded {
+                    block_hash,
+                    block_number,
+                    transaction_index,
+                    effective_gas_price: receipt.effective_gas_price,
+                },
+            )?);
+        }
         receipts.push(ProjectedReceipt {
             transaction_type: EthU256::from(evm_transaction.kind().type_id()),
             transaction_hash,
@@ -250,6 +276,11 @@ pub(crate) async fn project_block(
 
     let receipts_root = calculate_receipt_root(&alloy_receipts);
     let block_bloom = alloy_primitives::logs_bloom(&block_alloy_logs);
+
+    let transactions = match transaction_responses {
+        Some(transactions) => BlockTransactions::Full(transactions),
+        None => BlockTransactions::Hashes(transaction_hashes),
+    };
 
     Ok(Some(ProjectedBlock {
         number: EthU256::from(block_number),

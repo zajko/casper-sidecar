@@ -281,7 +281,7 @@ async fn logs_for_block(
     identifier: Option<BlockIdentifier>,
     filter: &LogFilter,
 ) -> Result<Vec<LogResponse>, RpcError> {
-    let Some(projected_block) = project_block(node_client, identifier).await? else {
+    let Some(projected_block) = project_block(node_client, identifier, false).await? else {
         return Ok(Vec::new());
     };
     Ok(projected_block

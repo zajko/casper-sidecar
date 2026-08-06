@@ -112,11 +112,13 @@ impl RpcWithParams for FeeHistory {
 
         let mut gas_used_ratio = Vec::with_capacity(history_len_usize);
         for height in oldest_height..=newest_height {
-            let block = project_block(node_client.clone(), Some(BlockIdentifier::Height(height)))
-                .await?
-                .ok_or_else(|| {
-                    invalid_params(format!("fee history block {height} was not found"))
-                })?;
+            let block = project_block(
+                node_client.clone(),
+                Some(BlockIdentifier::Height(height)),
+                false,
+            )
+            .await?
+            .ok_or_else(|| invalid_params(format!("fee history block {height} was not found")))?;
             gas_used_ratio.push(block_gas_used_ratio(
                 block.gas_used,
                 evm_config.block_gas_limit,

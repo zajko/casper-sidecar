@@ -24,7 +24,8 @@ use super::rpcs::{
         GasPrice as EthGasPrice, GetBalance as EthGetBalance, GetBlockByHash as EthGetBlockByHash,
         GetBlockByNumber as EthGetBlockByNumber, GetCode as EthGetCode,
         GetFilterChanges as EthGetFilterChanges, GetFilterLogs as EthGetFilterLogs,
-        GetLogs as EthGetLogs, GetTransactionCount as EthGetTransactionCount,
+        GetLogs as EthGetLogs, GetTransactionByHash as EthGetTransactionByHash,
+        GetTransactionCount as EthGetTransactionCount,
         GetTransactionReceipt as EthGetTransactionReceipt,
         MaxPriorityFeePerGas as EthMaxPriorityFeePerGas, NetVersion as EthNetVersion,
         NewFilter as EthNewFilter, SUBSCRIBE_METHOD, SendRawTransaction as EthSendRawTransaction,
@@ -120,6 +121,7 @@ pub async fn run(
     register!(EthGetCode);
     register!(EthGetTransactionCount);
     register!(EthSendRawTransaction);
+    register!(EthGetTransactionByHash);
     register!(EthGetTransactionReceipt);
     register_with_context!(EthGetLogs, node.clone(), max_eth_log_block_range);
     register!(EthCall);

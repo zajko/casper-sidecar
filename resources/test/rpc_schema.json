@@ -2323,6 +2323,47 @@
       ]
     },
     {
+      "name": "eth_getTransactionByHash",
+      "summary": "returns an Ethereum-compatible pending or block-included EVM transaction by hash",
+      "params": [
+        {
+          "name": "transaction_hash",
+          "schema": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getTransactionByHash_result",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/TransactionResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getTransactionByHash_example",
+          "params": [
+            {
+              "name": "transaction_hash",
+              "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            }
+          ],
+          "result": {
+            "name": "eth_getTransactionByHash_example_result",
+            "value": null
+          }
+        }
+      ]
+    },
+    {
       "name": "eth_getTransactionReceipt",
       "summary": "returns an Ethereum-compatible receipt for an executed EVM transaction",
       "params": [
@@ -10199,10 +10240,7 @@
             "$ref": "#/components/schemas/EthU256"
           },
           "transactions": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/EvmHash"
-            }
+            "$ref": "#/components/schemas/BlockTransactions"
           },
           "uncles": {
             "type": "array",
@@ -10220,6 +10258,531 @@
       },
       "EthAddress": {
         "type": "string"
+      },
+      "BlockTransactions": {
+        "description": "The transactions representation returned by Ethereum block lookup RPCs.",
+        "anyOf": [
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvmHash"
+            }
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TransactionResponse"
+            }
+          }
+        ]
+      },
+      "TransactionResponse": {
+        "description": "Ethereum JSON-RPC transaction response for the supported signed envelope types.",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/Eip7702TransactionResponse"
+          },
+          {
+            "$ref": "#/components/schemas/Eip1559TransactionResponse"
+          },
+          {
+            "$ref": "#/components/schemas/Eip2930TransactionResponse"
+          },
+          {
+            "$ref": "#/components/schemas/LegacyTransactionResponse"
+          }
+        ]
+      },
+      "Eip7702TransactionResponse": {
+        "type": "object",
+        "required": [
+          "accessList",
+          "authorizationList",
+          "chainId",
+          "from",
+          "gas",
+          "gasPrice",
+          "hash",
+          "input",
+          "maxFeePerGas",
+          "maxPriorityFeePerGas",
+          "nonce",
+          "r",
+          "s",
+          "type",
+          "v",
+          "value",
+          "yParity"
+        ],
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "chainId": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "gasPrice": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "maxFeePerGas": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "maxPriorityFeePerGas": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "accessList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessListItemResponse"
+            }
+          },
+          "authorizationList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthorizationResponse"
+            }
+          },
+          "v": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "yParity": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "blockHash": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvmHash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blockNumber": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "transactionIndex": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hash": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "from": {
+            "$ref": "#/components/schemas/EthAddress"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthAddress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nonce": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "gas": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "value": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "input": {
+            "$ref": "#/components/schemas/EthHexData"
+          },
+          "r": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "s": {
+            "$ref": "#/components/schemas/EthU256"
+          }
+        }
+      },
+      "AccessListItemResponse": {
+        "type": "object",
+        "required": [
+          "address",
+          "storageKeys"
+        ],
+        "properties": {
+          "address": {
+            "$ref": "#/components/schemas/EthAddress"
+          },
+          "storageKeys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvmHash"
+            }
+          }
+        }
+      },
+      "AuthorizationResponse": {
+        "type": "object",
+        "required": [
+          "address",
+          "chainId",
+          "nonce",
+          "r",
+          "s",
+          "yParity"
+        ],
+        "properties": {
+          "chainId": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "address": {
+            "$ref": "#/components/schemas/EthAddress"
+          },
+          "nonce": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "r": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "s": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "yParity": {
+            "$ref": "#/components/schemas/EthU256"
+          }
+        }
+      },
+      "Eip1559TransactionResponse": {
+        "type": "object",
+        "required": [
+          "accessList",
+          "chainId",
+          "from",
+          "gas",
+          "gasPrice",
+          "hash",
+          "input",
+          "maxFeePerGas",
+          "maxPriorityFeePerGas",
+          "nonce",
+          "r",
+          "s",
+          "type",
+          "v",
+          "value",
+          "yParity"
+        ],
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "chainId": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "gasPrice": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "maxFeePerGas": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "maxPriorityFeePerGas": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "accessList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessListItemResponse"
+            }
+          },
+          "v": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "yParity": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "blockHash": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvmHash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blockNumber": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "transactionIndex": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hash": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "from": {
+            "$ref": "#/components/schemas/EthAddress"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthAddress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nonce": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "gas": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "value": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "input": {
+            "$ref": "#/components/schemas/EthHexData"
+          },
+          "r": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "s": {
+            "$ref": "#/components/schemas/EthU256"
+          }
+        }
+      },
+      "Eip2930TransactionResponse": {
+        "type": "object",
+        "required": [
+          "accessList",
+          "chainId",
+          "from",
+          "gas",
+          "gasPrice",
+          "hash",
+          "input",
+          "nonce",
+          "r",
+          "s",
+          "type",
+          "v",
+          "value",
+          "yParity"
+        ],
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "chainId": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "gasPrice": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "accessList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessListItemResponse"
+            }
+          },
+          "v": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "yParity": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "blockHash": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvmHash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blockNumber": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "transactionIndex": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hash": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "from": {
+            "$ref": "#/components/schemas/EthAddress"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthAddress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nonce": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "gas": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "value": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "input": {
+            "$ref": "#/components/schemas/EthHexData"
+          },
+          "r": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "s": {
+            "$ref": "#/components/schemas/EthU256"
+          }
+        }
+      },
+      "LegacyTransactionResponse": {
+        "type": "object",
+        "required": [
+          "from",
+          "gas",
+          "gasPrice",
+          "hash",
+          "input",
+          "nonce",
+          "r",
+          "s",
+          "type",
+          "v",
+          "value"
+        ],
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "chainId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gasPrice": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "v": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "blockHash": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvmHash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blockNumber": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "transactionIndex": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthU256"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hash": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "from": {
+            "$ref": "#/components/schemas/EthAddress"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EthAddress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nonce": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "gas": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "value": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "input": {
+            "$ref": "#/components/schemas/EthHexData"
+          },
+          "r": {
+            "$ref": "#/components/schemas/EthU256"
+          },
+          "s": {
+            "$ref": "#/components/schemas/EthU256"
+          }
+        }
       },
       "TransactionReceiptResponse": {
         "description": "Ethereum transaction receipt response.",

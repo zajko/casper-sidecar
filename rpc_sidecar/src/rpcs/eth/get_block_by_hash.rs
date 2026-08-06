@@ -10,7 +10,7 @@ use super::{
     super::{NodeClient, RpcWithParams},
     get_block_by_number::{BlockResponse, get_block},
     projection::evm_hash_to_block_hash,
-    types::{invalid_params, parse_positional_params},
+    types::parse_positional_params,
 };
 use crate::rpcs::docs::DocExample;
 
@@ -63,16 +63,12 @@ impl RpcWithParams for GetBlockByHash {
         node_client: Arc<dyn NodeClient>,
         params: GetBlockByHashParams,
     ) -> Result<Option<BlockResponse>, RpcError> {
-        if params.full_transactions {
-            return Err(invalid_params(
-                "full transaction objects are not supported yet",
-            ));
-        }
         get_block(
             node_client,
             Some(BlockIdentifier::Hash(evm_hash_to_block_hash(
                 params.block_hash,
             ))),
+            params.full_transactions,
         )
         .await
     }
