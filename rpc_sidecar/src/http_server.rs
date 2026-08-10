@@ -24,7 +24,8 @@ use super::rpcs::{
         GasPrice as EthGasPrice, GetBalance as EthGetBalance, GetBlockByHash as EthGetBlockByHash,
         GetBlockByNumber as EthGetBlockByNumber, GetCode as EthGetCode,
         GetFilterChanges as EthGetFilterChanges, GetFilterLogs as EthGetFilterLogs,
-        GetLogs as EthGetLogs, GetTransactionByHash as EthGetTransactionByHash,
+        GetLogs as EthGetLogs, GetStorageAt as EthGetStorageAt,
+        GetTransactionByHash as EthGetTransactionByHash,
         GetTransactionCount as EthGetTransactionCount,
         GetTransactionReceipt as EthGetTransactionReceipt,
         MaxPriorityFeePerGas as EthMaxPriorityFeePerGas, NetVersion as EthNetVersion,
@@ -119,6 +120,7 @@ pub async fn run(
     register!(EthGetBlockByNumber);
     register!(EthGetBalance);
     register!(EthGetCode);
+    register!(EthGetStorageAt);
     register!(EthGetTransactionCount);
     register!(EthSendRawTransaction);
     register!(EthGetTransactionByHash);

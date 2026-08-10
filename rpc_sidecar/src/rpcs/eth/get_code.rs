@@ -7,16 +7,17 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    super::{NodeClient, RpcWithParams},
+    super::{Error as RpcServerError, NodeClient, RpcWithParams},
     types::{
-        BlockNumberParam, BlockTag, EthAddress, HexData, internal_error, parse_positional_params,
+        BlockNumberParam, BlockTag, EthAddress, HexData, PendingPolicy, StateBlockParam,
+        internal_error, parse_positional_params,
     },
 };
 use crate::rpcs::docs::DocExample;
 
 static GET_CODE_PARAMS_EXAMPLE: LazyLock<GetCodeParams> = LazyLock::new(|| GetCodeParams {
     address: EthAddress::from(evm::Address::ZERO),
-    block: BlockNumberParam::Tag(BlockTag::Latest),
+    block: StateBlockParam::Number(BlockNumberParam::Tag(BlockTag::Latest)),
 });
 
 /// Params for `eth_getCode`.
@@ -24,18 +25,12 @@ static GET_CODE_PARAMS_EXAMPLE: LazyLock<GetCodeParams> = LazyLock::new(|| GetCo
 #[serde(deny_unknown_fields)]
 pub(crate) struct GetCodeParams {
     address: EthAddress,
-    block: BlockNumberParam,
+    block: StateBlockParam,
 }
 
 impl GetCodeParams {
     fn address(&self) -> evm::Address {
         self.address.into_inner()
-    }
-
-    fn state_identifier(&self) -> Result<Option<GlobalStateIdentifier>, RpcError> {
-        self.block
-            .identifier()
-            .map(|maybe_identifier| maybe_identifier.map(GlobalStateIdentifier::from))
     }
 }
 
@@ -46,7 +41,7 @@ impl DocExample for GetCodeParams {
 }
 
 #[derive(Deserialize)]
-struct PositionalParams(EthAddress, BlockNumberParam);
+struct PositionalParams(EthAddress, StateBlockParam);
 
 impl From<PositionalParams> for GetCodeParams {
     fn from(params: PositionalParams) -> Self {
@@ -66,7 +61,7 @@ async fn read_code(
     let maybe_code_hash = node_client
         .query_global_state(state_identifier, code_hash_key, vec![])
         .await
-        .map_err(internal_error)?;
+        .map_err(|error| RpcServerError::NodeRequest("EVM code hash", error))?;
     let code_hash = match maybe_code_hash.map(|value| value.into_inner().0) {
         Some(StoredValue::CLValue(cl_value)) => {
             cl_value.into_t::<evm::Hash>().map_err(|error| {
@@ -92,7 +87,7 @@ async fn read_code(
     let maybe_byte_code = node_client
         .query_global_state(state_identifier, byte_code_key, vec![])
         .await
-        .map_err(internal_error)?;
+        .map_err(|error| RpcServerError::NodeRequest("EVM bytecode", error))?;
     match maybe_byte_code.map(|value| value.into_inner().0) {
         Some(StoredValue::ByteCode(byte_code)) if byte_code.kind().is_evm() => {
             Ok(HexData::from(byte_code.take_bytes()))
@@ -127,27 +122,28 @@ impl RpcWithParams for GetCode {
         node_client: Arc<dyn NodeClient>,
         params: GetCodeParams,
     ) -> Result<HexData, RpcError> {
-        read_code(
-            node_client.as_ref(),
-            params.state_identifier()?,
-            params.address(),
-        )
-        .await
+        let state_identifier = params
+            .block
+            .resolve_state_identifier(node_client.as_ref(), PendingPolicy::Latest)
+            .await?;
+        read_code(node_client.as_ref(), state_identifier, params.address()).await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use casper_binary_port::{
-        BinaryResponse, Command, GetRequest, GlobalStateEntityQualifier, GlobalStateQueryResult,
-        GlobalStateRequest,
+        BinaryResponse, Command, ErrorCode as BinaryPortErrorCode, GetRequest,
+        GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
     };
     use casper_json_rpc::ReservedErrorCode;
-    use casper_types::{ByteCode, ByteCodeKind, CLValue};
+    use casper_types::{
+        Block, BlockIdentifier, ByteCode, ByteCodeKind, CLValue, TestBlockBuilder, testing::TestRng,
+    };
     use serde_json::json;
 
     use super::*;
-    use crate::rpcs::test_utils::BinaryPortMock;
+    use crate::rpcs::{eth::types::BlockHashParam, test_utils::BinaryPortMock};
 
     const BLOCK_HEIGHT: u64 = 69;
 
@@ -157,6 +153,17 @@ mod tests {
         let address = evm::Address::new([1; evm::ADDRESS_LENGTH]);
         let code_hash = evm::Hash::new([2; evm::HASH_LENGTH]);
         let state_identifier = Some(GlobalStateIdentifier::BlockHeight(BLOCK_HEIGHT));
+        let block = Block::V2(
+            TestBlockBuilder::new()
+                .height(BLOCK_HEIGHT)
+                .build(&mut TestRng::new()),
+        );
+        client
+            .add_block_header_req_res(
+                block.clone_header(),
+                InformationRequest::BlockHeader(Some(BlockIdentifier::Height(BLOCK_HEIGHT))),
+            )
+            .await;
         add_state_response(
             &client,
             state_identifier,
@@ -179,7 +186,7 @@ mod tests {
             Arc::new(client),
             GetCodeParams {
                 address: address.into(),
-                block: BlockNumberParam::Height(BLOCK_HEIGHT.into()),
+                block: BlockNumberParam::Height(BLOCK_HEIGHT.into()).into(),
             },
         )
         .await
@@ -198,7 +205,7 @@ mod tests {
             Arc::new(client),
             GetCodeParams {
                 address: address.into(),
-                block: BlockNumberParam::Tag(BlockTag::Latest),
+                block: BlockNumberParam::Tag(BlockTag::Latest).into(),
             },
         )
         .await
@@ -225,7 +232,7 @@ mod tests {
             Arc::new(client),
             GetCodeParams {
                 address: address.into(),
-                block: BlockNumberParam::Tag(BlockTag::Pending),
+                block: BlockNumberParam::Tag(BlockTag::Pending).into(),
             },
         )
         .await
@@ -261,7 +268,7 @@ mod tests {
             Arc::new(client),
             GetCodeParams {
                 address: address.into(),
-                block: BlockNumberParam::Tag(BlockTag::Finalized),
+                block: BlockNumberParam::Tag(BlockTag::Finalized).into(),
             },
         )
         .await
@@ -278,9 +285,74 @@ mod tests {
                 .expect("MetaMask get-code request should parse");
 
         assert_eq!(
-            params.state_identifier().unwrap(),
-            Some(GlobalStateIdentifier::BlockHeight(BLOCK_HEIGHT))
+            params.block,
+            StateBlockParam::Number(BlockNumberParam::Height(BLOCK_HEIGHT.into()))
         );
+    }
+
+    #[test]
+    fn parses_eip_1898_hash_object_selector() {
+        let address = format!("0x{}", "07".repeat(evm::ADDRESS_LENGTH));
+        let block_hash = evm::Hash::new([0x2a; evm::HASH_LENGTH]);
+        let params = GetCode::try_parse_params(Some(Params::Array(vec![
+            json!(address),
+            json!({
+                "blockHash": block_hash,
+                "requireCanonical": false,
+            }),
+        ])))
+        .expect("EIP-1898 block hash object should parse");
+
+        assert_eq!(
+            params.block,
+            StateBlockParam::HashObject(BlockHashParam {
+                block_hash,
+                require_canonical: false,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn pruned_historical_state_returns_no_such_state_root() {
+        let client = Arc::new(BinaryPortMock::new());
+        let address = evm::Address::new([8; evm::ADDRESS_LENGTH]);
+        let block = Block::V2(
+            TestBlockBuilder::new()
+                .height(BLOCK_HEIGHT)
+                .build(&mut TestRng::new()),
+        );
+        client
+            .add_block_header_req_res(
+                block.clone_header(),
+                InformationRequest::BlockHeader(Some(BlockIdentifier::Height(BLOCK_HEIGHT))),
+            )
+            .await;
+        let request = GlobalStateRequest::new(
+            Some(GlobalStateIdentifier::BlockHeight(BLOCK_HEIGHT)),
+            GlobalStateEntityQualifier::Item {
+                base_key: Key::Evm(EvmAddr::CodeHash(address)),
+                path: Vec::new(),
+            },
+        );
+        client
+            .when_then(
+                Command::Get(GetRequest::State(Box::new(request))),
+                BinaryResponse::new_error(BinaryPortErrorCode::RootNotFound),
+            )
+            .await;
+
+        let error = GetCode::do_handle_request(
+            client.clone(),
+            GetCodeParams {
+                address: address.into(),
+                block: BlockNumberParam::Height(BLOCK_HEIGHT.into()).into(),
+            },
+        )
+        .await
+        .expect_err("pruned code state should fail");
+
+        assert_eq!(error.code(), crate::rpcs::ErrorCode::NoSuchStateRoot as i64);
+        client.verify_no_lingering().await;
     }
 
     async fn add_state_response(

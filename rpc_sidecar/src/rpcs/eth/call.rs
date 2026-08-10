@@ -3,7 +3,10 @@ use std::sync::{Arc, LazyLock};
 use async_trait::async_trait;
 use casper_binary_port::EvmSpeculativeExecutionResult;
 use casper_json_rpc::{Error as RpcError, Params, ReservedErrorCode};
-use casper_types::{BlockIdentifier, EvmConfig, EvmTransaction, TimeDiff, Timestamp, U256, evm};
+use casper_types::{
+    BlockIdentifier, EvmAddr, EvmConfig, EvmTransaction, GlobalStateIdentifier, Key, TimeDiff,
+    Timestamp, U256, evm,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -11,10 +14,9 @@ use super::{
     super::{Error as RpcServerError, NodeClient, RpcWithParams},
     config::read_evm_config,
     eth_u256::EthU256,
-    projection::evm_hash_to_block_hash,
     types::{
-        BlockNumberParam, BlockTag, DEFAULT_ETH_CALL_GAS_LIMIT, EthAddress, HexData,
-        internal_error, invalid_params, parse_positional_params,
+        BlockNumberParam, BlockTag, DEFAULT_ETH_CALL_GAS_LIMIT, EthAddress, HexData, PendingPolicy,
+        StateBlockParam, internal_error, invalid_params, parse_positional_params,
     },
 };
 use crate::{ClientError, rpcs::docs::DocExample};
@@ -29,7 +31,7 @@ static CALL_PARAMS_EXAMPLE: LazyLock<CallParams> = LazyLock::new(|| CallParams {
         gas: None,
         gas_price: None,
     },
-    block: CallBlockParam::Number(BlockNumberParam::Tag(BlockTag::Latest)),
+    block: StateBlockParam::Number(BlockNumberParam::Tag(BlockTag::Latest)),
 });
 
 const DEFAULT_EVM_CALL_TTL: TimeDiff = TimeDiff::from_seconds(300);
@@ -98,52 +100,12 @@ impl CallObject {
 pub(crate) struct CallParams {
     call: CallObject,
     #[serde(default)]
-    block: CallBlockParam,
-}
-
-/// Block selector accepted by `eth_call`.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged)]
-enum CallBlockParam {
-    /// A block height or named tag.
-    Number(BlockNumberParam),
-    /// An EIP-1898 block hash selector.
-    Hash(CallBlockHashParam),
-}
-
-impl Default for CallBlockParam {
-    fn default() -> Self {
-        CallBlockParam::Number(BlockNumberParam::default())
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct CallBlockHashParam {
-    block_hash: evm::Hash,
-    /// Accepted for EIP-1898 compatibility. Speculative execution only resolves complete blocks.
-    #[serde(default)]
-    require_canonical: bool,
+    block: StateBlockParam,
 }
 
 impl CallParams {
     fn call(&self) -> &CallObject {
         &self.call
-    }
-
-    fn block_identifier(&self) -> Result<Option<BlockIdentifier>, RpcError> {
-        match self.block {
-            CallBlockParam::Number(BlockNumberParam::Tag(BlockTag::Pending)) => {
-                Err(invalid_params("eth_call does not support pending state"))
-            }
-            CallBlockParam::Number(block) => block.identifier(),
-            CallBlockParam::Hash(CallBlockHashParam {
-                block_hash,
-                require_canonical: _,
-            }) => Ok(Some(BlockIdentifier::Hash(evm_hash_to_block_hash(
-                block_hash,
-            )))),
-        }
     }
 }
 
@@ -154,7 +116,7 @@ impl DocExample for CallParams {
 }
 
 #[derive(Deserialize)]
-struct PositionalParams(CallObject, #[serde(default)] CallBlockParam);
+struct PositionalParams(CallObject, #[serde(default)] StateBlockParam);
 
 impl From<PositionalParams> for CallParams {
     fn from(params: PositionalParams) -> Self {
@@ -214,6 +176,11 @@ pub(super) async fn execute_evm_call(
     let transaction = new_evm_call_transaction(call, evm_config)?;
     match node_client.evm_call(transaction, block_identifier).await {
         Ok(result) => Ok(result),
+        // Explicit selectors have already resolved to a known block header.  A subsequent
+        // not-found response therefore means that block's historical state is unavailable.
+        Err(ClientError::NotFound) if block_identifier.is_some() => Err(
+            RpcServerError::NodeRequest("EVM call state", ClientError::UnknownStateRootHash).into(),
+        ),
         Err(ClientError::NotFound) => {
             let available_block_range = node_client
                 .read_available_block_range()
@@ -230,6 +197,24 @@ pub(super) async fn execute_evm_call(
         }
         Err(error) => Err(internal_error(error)),
     }
+}
+
+async fn ensure_evm_call_state_available(
+    node_client: &dyn NodeClient,
+    block_identifier: BlockIdentifier,
+) -> Result<(), RpcError> {
+    // Speculative execution currently collapses a missing historical state root into a generic
+    // transaction error.  Probe the selected root first so callers retain the existing
+    // NoSuchStateRoot JSON-RPC error instead.
+    node_client
+        .query_global_state(
+            Some(GlobalStateIdentifier::from(block_identifier)),
+            Key::Evm(EvmAddr::Account(evm::Address::ZERO)),
+            vec![],
+        )
+        .await
+        .map(|_| ())
+        .map_err(|error| RpcServerError::NodeRequest("EVM call state", error).into())
 }
 
 pub(super) fn ensure_evm_call_succeeded(
@@ -270,7 +255,13 @@ impl RpcWithParams for Call {
         node_client: Arc<dyn NodeClient>,
         params: CallParams,
     ) -> Result<HexData, RpcError> {
-        let block_identifier = params.block_identifier()?;
+        let block_identifier = params
+            .block
+            .resolve_block_identifier(node_client.as_ref(), PendingPolicy::Reject)
+            .await?;
+        if let Some(block_identifier) = block_identifier {
+            ensure_evm_call_state_available(node_client.as_ref(), block_identifier).await?;
+        }
         let result =
             execute_evm_call(node_client.as_ref(), params.call(), block_identifier).await?;
         ensure_evm_call_succeeded(&result)?;
@@ -281,18 +272,24 @@ impl RpcWithParams for Call {
 #[cfg(test)]
 mod tests {
     use casper_binary_port::{
-        BinaryResponse, Command, ErrorCode as BinaryPortErrorCode, InformationRequest,
+        BinaryResponse, Command, ErrorCode as BinaryPortErrorCode, GetRequest,
+        GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
     };
     use casper_types::{
-        AvailableBlockRange, BlockHash, ChainspecRawBytes, Gas,
+        AvailableBlockRange, Block, BlockHash, BlockHeader, ChainspecRawBytes, Gas,
+        TestBlockBuilder,
         bytesrepr::Bytes,
         evm::{Receipt, ReceiptStatus},
         execution::Effects,
+        testing::TestRng,
     };
     use serde_json::json;
 
     use super::*;
-    use crate::rpcs::test_utils::BinaryPortMock;
+    use crate::rpcs::{
+        eth::types::{BlockHashParam, block_hash_to_evm_hash},
+        test_utils::BinaryPortMock,
+    };
 
     const EVM_CHAIN_ID: u64 = 7;
     const EVM_BASE_FEE: u64 = 3;
@@ -311,7 +308,7 @@ mod tests {
 
         assert_eq!(
             params.block,
-            CallBlockParam::Number(BlockNumberParam::Height(EthU256::from(12u64)))
+            StateBlockParam::Number(BlockNumberParam::Height(EthU256::from(12u64)))
         );
     }
 
@@ -329,16 +326,10 @@ mod tests {
 
         assert_eq!(
             params.block,
-            CallBlockParam::Hash(CallBlockHashParam {
+            StateBlockParam::HashObject(BlockHashParam {
                 block_hash: evm_hash,
                 require_canonical: true,
             })
-        );
-        assert_eq!(
-            params
-                .block_identifier()
-                .expect("block hash selector should be supported"),
-            Some(BlockIdentifier::Hash(evm_hash_to_block_hash(evm_hash)))
         );
     }
 
@@ -349,47 +340,16 @@ mod tests {
 
         assert_eq!(
             params.block,
-            CallBlockParam::Number(BlockNumberParam::Tag(BlockTag::Latest))
+            StateBlockParam::Number(BlockNumberParam::Tag(BlockTag::Latest))
         );
     }
 
-    #[test]
-    fn eth_call_maps_supported_block_selectors() {
-        let selectors = [
-            (
-                BlockNumberParam::Height(EthU256::from(12u64)),
-                Some(BlockIdentifier::Height(12)),
-            ),
-            (
-                BlockNumberParam::Tag(BlockTag::Earliest),
-                Some(BlockIdentifier::Height(0)),
-            ),
-            (BlockNumberParam::Tag(BlockTag::Latest), None),
-            (BlockNumberParam::Tag(BlockTag::Safe), None),
-            (BlockNumberParam::Tag(BlockTag::Finalized), None),
-        ];
-
-        for (block, expected) in selectors {
-            assert_eq!(
-                CallParams {
-                    call: CallObject::default(),
-                    block: CallBlockParam::Number(block),
-                }
-                .block_identifier()
-                .expect("block selector should be supported"),
-                expected
-            );
-        }
-    }
-
-    #[test]
-    fn eth_call_rejects_pending_block_selector() {
-        let error = CallParams {
-            call: CallObject::default(),
-            block: CallBlockParam::Number(BlockNumberParam::Tag(BlockTag::Pending)),
-        }
-        .block_identifier()
-        .expect_err("pending state should be rejected");
+    #[tokio::test]
+    async fn eth_call_rejects_pending_block_selector() {
+        let error = StateBlockParam::Number(BlockNumberParam::Tag(BlockTag::Pending))
+            .resolve_block_identifier(&BinaryPortMock::new(), PendingPolicy::Reject)
+            .await
+            .expect_err("pending state should be rejected");
 
         assert_eq!(
             error,
@@ -400,6 +360,23 @@ mod tests {
     #[tokio::test]
     async fn eth_call_sends_numeric_height_to_speculative_execution() {
         let client = BinaryPortMock::new();
+        let block = Block::V2(
+            TestBlockBuilder::new()
+                .height(12)
+                .build(&mut TestRng::new()),
+        );
+        client
+            .add_block_header_req_res(
+                block.clone_header(),
+                InformationRequest::BlockHeader(Some(BlockIdentifier::Height(12))),
+            )
+            .await;
+        add_state_probe_response(
+            &client,
+            BlockIdentifier::Height(12),
+            BinaryResponse::from_option::<GlobalStateQueryResult>(None),
+        )
+        .await;
         let chainspec_request = InformationRequest::ChainspecRawBytes
             .try_into()
             .expect("chainspec information request should convert");
@@ -412,7 +389,7 @@ mod tests {
 
         let params = CallParams {
             call: CallObject::default(),
-            block: CallBlockParam::Number(BlockNumberParam::Height(EthU256::from(12u64))),
+            block: StateBlockParam::Number(BlockNumberParam::Height(EthU256::from(12u64))),
         };
         let transaction =
             new_evm_call_transaction(&params.call, evm_config()).expect("transaction should build");
@@ -436,6 +413,24 @@ mod tests {
     #[tokio::test]
     async fn eth_call_sends_block_hash_to_speculative_execution() {
         let client = BinaryPortMock::new();
+        let block = Block::V2(
+            TestBlockBuilder::new()
+                .height(12)
+                .build(&mut TestRng::new()),
+        );
+        let block_hash = *block.hash();
+        client
+            .add_block_header_req_res(
+                block.clone_header(),
+                InformationRequest::BlockHeader(Some(BlockIdentifier::Hash(block_hash))),
+            )
+            .await;
+        add_state_probe_response(
+            &client,
+            BlockIdentifier::Hash(block_hash),
+            BinaryResponse::from_option::<GlobalStateQueryResult>(None),
+        )
+        .await;
         let chainspec_request = InformationRequest::ChainspecRawBytes
             .try_into()
             .expect("chainspec information request should convert");
@@ -446,13 +441,9 @@ mod tests {
             )
             .await;
 
-        let block_hash = BlockHash::new([4; 32].into());
         let params = CallParams {
             call: CallObject::default(),
-            block: CallBlockParam::Hash(CallBlockHashParam {
-                block_hash: evm::Hash::new([4; evm::HASH_LENGTH]),
-                require_canonical: false,
-            }),
+            block: StateBlockParam::Hash(block_hash_to_evm_hash(block_hash)),
         };
         let transaction =
             new_evm_call_transaction(&params.call, evm_config()).expect("transaction should build");
@@ -474,33 +465,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn eth_call_enforces_require_canonical() {
+        let rng = &mut TestRng::new();
+        let selected = Block::V2(TestBlockBuilder::new().height(12).build(rng));
+        let canonical = Block::V2(TestBlockBuilder::new().height(12).build(rng));
+        let selected_hash = *selected.hash();
+        let client = BinaryPortMock::new();
+        client
+            .add_block_header_req_res(
+                selected.clone_header(),
+                InformationRequest::BlockHeader(Some(BlockIdentifier::Hash(selected_hash))),
+            )
+            .await;
+        client
+            .add_block_header_req_res(
+                canonical.clone_header(),
+                InformationRequest::BlockHeader(Some(BlockIdentifier::Height(12))),
+            )
+            .await;
+
+        let error = Call::do_handle_request(
+            Arc::new(client),
+            CallParams {
+                call: CallObject::default(),
+                block: StateBlockParam::HashObject(BlockHashParam {
+                    block_hash: block_hash_to_evm_hash(selected_hash),
+                    require_canonical: true,
+                }),
+            },
+        )
+        .await
+        .expect_err("eth_call must reject a noncanonical block");
+
+        assert_eq!(error.code(), crate::rpcs::ErrorCode::InvalidBlock as i64);
+    }
+
+    #[tokio::test]
     async fn eth_call_reports_missing_historical_block() {
         let client = BinaryPortMock::new();
-        let chainspec_request = InformationRequest::ChainspecRawBytes
-            .try_into()
-            .expect("chainspec information request should convert");
+        let block_header_request =
+            InformationRequest::BlockHeader(Some(BlockIdentifier::Height(12)))
+                .try_into()
+                .expect("block-header information request should convert");
         client
             .when_then(
-                Command::Get(chainspec_request),
-                BinaryResponse::from_value(chainspec()),
+                Command::Get(block_header_request),
+                BinaryResponse::from_option(None::<BlockHeader>),
             )
             .await;
 
         let params = CallParams {
             call: CallObject::default(),
-            block: CallBlockParam::Number(BlockNumberParam::Height(EthU256::from(12u64))),
+            block: StateBlockParam::Number(BlockNumberParam::Height(EthU256::from(12u64))),
         };
-        let transaction =
-            new_evm_call_transaction(&params.call, evm_config()).expect("transaction should build");
-        client
-            .when_then(
-                Command::TrySpeculativeExec {
-                    transaction: casper_types::Transaction::Evm(Box::new(transaction)),
-                    block_identifier: Some(BlockIdentifier::Height(12)),
-                },
-                BinaryResponse::new_error(BinaryPortErrorCode::NotFound),
-            )
-            .await;
         let available_range_request = InformationRequest::AvailableBlockRange
             .try_into()
             .expect("available range information request should convert");
@@ -519,12 +536,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn eth_call_reports_pruned_historical_state() {
+        let client = Arc::new(BinaryPortMock::new());
+        let block = Block::V2(
+            TestBlockBuilder::new()
+                .height(12)
+                .build(&mut TestRng::new()),
+        );
+        client
+            .add_block_header_req_res(
+                block.clone_header(),
+                InformationRequest::BlockHeader(Some(BlockIdentifier::Height(12))),
+            )
+            .await;
+        add_state_probe_response(
+            &client,
+            BlockIdentifier::Height(12),
+            BinaryResponse::new_error(BinaryPortErrorCode::RootNotFound),
+        )
+        .await;
+
+        let params = CallParams {
+            call: CallObject::default(),
+            block: StateBlockParam::Number(BlockNumberParam::Height(EthU256::from(12u64))),
+        };
+
+        let error = Call::do_handle_request(client.clone(), params)
+            .await
+            .expect_err("known block with unavailable state should fail");
+
+        assert_eq!(error.code(), crate::rpcs::ErrorCode::NoSuchStateRoot as i64);
+        client.verify_no_lingering().await;
+    }
+
+    #[tokio::test]
     async fn eth_call_reports_unsupported_historical_execution() {
+        let rng = &mut TestRng::new();
         for error_code in [
             BinaryPortErrorCode::UnsupportedRequest,
             BinaryPortErrorCode::MalformedCommand,
         ] {
             let client = BinaryPortMock::new();
+            let block = Block::V2(TestBlockBuilder::new().height(12).build(rng));
+            client
+                .add_block_header_req_res(
+                    block.clone_header(),
+                    InformationRequest::BlockHeader(Some(BlockIdentifier::Height(12))),
+                )
+                .await;
+            add_state_probe_response(
+                &client,
+                BlockIdentifier::Height(12),
+                BinaryResponse::from_option::<GlobalStateQueryResult>(None),
+            )
+            .await;
             let chainspec_request = InformationRequest::ChainspecRawBytes
                 .try_into()
                 .expect("chainspec information request should convert");
@@ -537,7 +602,7 @@ mod tests {
 
             let params = CallParams {
                 call: CallObject::default(),
-                block: CallBlockParam::Number(BlockNumberParam::Height(EthU256::from(12u64))),
+                block: StateBlockParam::Number(BlockNumberParam::Height(EthU256::from(12u64))),
             };
             let transaction = new_evm_call_transaction(&params.call, evm_config())
                 .expect("transaction should build");
@@ -557,6 +622,23 @@ mod tests {
 
             assert_eq!(error.code(), ReservedErrorCode::InvalidParams as i64);
         }
+    }
+
+    async fn add_state_probe_response(
+        client: &BinaryPortMock,
+        block_identifier: BlockIdentifier,
+        response: BinaryResponse,
+    ) {
+        let request = GlobalStateRequest::new(
+            Some(GlobalStateIdentifier::from(block_identifier)),
+            GlobalStateEntityQualifier::Item {
+                base_key: Key::Evm(EvmAddr::Account(evm::Address::ZERO)),
+                path: Vec::new(),
+            },
+        );
+        client
+            .when_then(Command::Get(GetRequest::State(Box::new(request))), response)
+            .await;
     }
 
     #[test]

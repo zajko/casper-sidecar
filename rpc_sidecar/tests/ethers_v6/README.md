@@ -23,3 +23,18 @@ npm run test:transaction
 This checks that `provider.getTransaction(hash)` parses successfully and that
 the raw transaction object is identical to the corresponding object returned
 by `eth_getBlockByNumber(..., true)`.
+
+To smoke-test storage reads and every supported EIP-1898 selector form, provide
+an address with a known, non-zero storage slot:
+
+```sh
+CASPER_RPC_URL=http://127.0.0.1:7777/rpc \
+CASPER_CONTRACT_ADDRESS=0x... \
+CASPER_STORAGE_SLOT=0x0 \
+CASPER_EXPECTED_STORAGE=0x0000000000000000000000000000000000000000000000000000000000000001 \
+npm run test:storage
+```
+
+The test reads the latest complete block first, then queries the same storage
+slot by tag, number, raw block hash, and both EIP-1898 object forms. It also
+sets `requireCanonical: true` for the hash-selected canonical block.

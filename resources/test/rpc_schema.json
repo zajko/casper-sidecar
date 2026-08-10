@@ -2163,7 +2163,7 @@
         {
           "name": "block",
           "schema": {
-            "$ref": "#/components/schemas/BlockNumberParam"
+            "$ref": "#/components/schemas/StateBlockParam"
           },
           "required": true
         }
@@ -2209,7 +2209,7 @@
         {
           "name": "block",
           "schema": {
-            "$ref": "#/components/schemas/BlockNumberParam"
+            "$ref": "#/components/schemas/StateBlockParam"
           },
           "required": true
         }
@@ -2241,6 +2241,66 @@
       ]
     },
     {
+      "name": "eth_getStorageAt",
+      "summary": "returns the 32-byte value stored at an EVM contract storage slot",
+      "params": [
+        {
+          "name": "address",
+          "schema": {
+            "$ref": "#/components/schemas/EthAddress"
+          },
+          "required": true
+        },
+        {
+          "name": "slot",
+          "schema": {
+            "$ref": "#/components/schemas/EthStorageSlot"
+          },
+          "required": true
+        },
+        {
+          "name": "block",
+          "schema": {
+            "$ref": "#/components/schemas/StateBlockParam"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "eth_getStorageAt_result",
+        "schema": {
+          "description": "Exactly 32 bytes of Ethereum JSON-RPC data encoded as 0x-prefixed hexadecimal.",
+          "type": "string",
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$"
+        }
+      },
+      "examples": [
+        {
+          "name": "eth_getStorageAt_example",
+          "params": [
+            {
+              "name": "address",
+              "value": "0x0000000000000000000000000000000000000000"
+            },
+            {
+              "name": "slot",
+              "value": "0x0"
+            },
+            {
+              "name": "block",
+              "value": "latest"
+            }
+          ],
+          "result": {
+            "name": "eth_getStorageAt_example_result",
+            "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        }
+      ]
+    },
+    {
       "name": "eth_getTransactionCount",
       "summary": "returns an EVM account nonce",
       "params": [
@@ -2255,7 +2315,7 @@
           "name": "block",
           "schema": {
             "default": "latest",
-            "$ref": "#/components/schemas/BlockNumberParam"
+            "$ref": "#/components/schemas/StateBlockParam"
           },
           "required": false
         }
@@ -2779,7 +2839,7 @@
           "name": "block",
           "schema": {
             "default": "latest",
-            "$ref": "#/components/schemas/CallBlockParam"
+            "$ref": "#/components/schemas/StateBlockParam"
           },
           "required": false
         }
@@ -10784,6 +10844,80 @@
           }
         }
       },
+      "StateBlockParam": {
+        "description": "Ethereum state selector supporting EIP-1898 and raw block hashes.\n\nHash forms precede quantity forms so a 32-byte hexadecimal string is interpreted as a block hash, matching the released Ethereum Execution API schema.",
+        "anyOf": [
+          {
+            "description": "An EIP-1898 block hash object.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlockHashParam"
+              }
+            ]
+          },
+          {
+            "description": "An EIP-1898 block number object.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlockNumberObjectParam"
+              }
+            ]
+          },
+          {
+            "description": "A raw 32-byte block hash.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EvmHash"
+              }
+            ]
+          },
+          {
+            "description": "A named tag or concrete block height.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlockNumberParam"
+              }
+            ]
+          }
+        ]
+      },
+      "BlockHashParam": {
+        "description": "EIP-1898 block hash object.",
+        "type": "object",
+        "required": [
+          "blockHash"
+        ],
+        "properties": {
+          "blockHash": {
+            "$ref": "#/components/schemas/EvmHash"
+          },
+          "requireCanonical": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BlockNumberObjectParam": {
+        "description": "EIP-1898 block number object.",
+        "type": "object",
+        "required": [
+          "blockNumber"
+        ],
+        "properties": {
+          "blockNumber": {
+            "$ref": "#/components/schemas/EthU256"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EthStorageSlot": {
+        "description": "An EVM storage slot encoded as 0x-prefixed hexadecimal with 1 to 64 digits; compact and left-padded forms are accepted.",
+        "type": "string",
+        "maxLength": 66,
+        "minLength": 3,
+        "pattern": "^0x[0-9a-fA-F]{1,64}$"
+      },
       "TransactionReceiptResponse": {
         "description": "Ethereum transaction receipt response.",
         "type": "object",
@@ -11011,44 +11145,6 @@
             ]
           }
         }
-      },
-      "CallBlockParam": {
-        "description": "Block selector accepted by `eth_call`.",
-        "anyOf": [
-          {
-            "description": "A block height or named tag.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BlockNumberParam"
-              }
-            ]
-          },
-          {
-            "description": "An EIP-1898 block hash selector.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/CallBlockHashParam"
-              }
-            ]
-          }
-        ]
-      },
-      "CallBlockHashParam": {
-        "type": "object",
-        "required": [
-          "blockHash"
-        ],
-        "properties": {
-          "blockHash": {
-            "$ref": "#/components/schemas/EvmHash"
-          },
-          "requireCanonical": {
-            "description": "Accepted for EIP-1898 compatibility. Speculative execution only resolves complete blocks.",
-            "default": false,
-            "type": "boolean"
-          }
-        },
-        "additionalProperties": false
       },
       "JsonBlockWithSignatures": {
         "description": "A JSON-friendly representation of a block and the signatures for that block.",

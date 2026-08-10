@@ -8,17 +8,20 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    super::{NodeClient, RpcWithParams},
+    super::{Error as RpcServerError, NodeClient, RpcWithParams},
     config::read_evm_config,
     eth_u256::EthU256,
-    types::{BlockNumberParam, BlockTag, EthAddress, internal_error, parse_positional_params},
+    types::{
+        BlockNumberParam, BlockTag, EthAddress, PendingPolicy, StateBlockParam, internal_error,
+        parse_positional_params,
+    },
 };
 use crate::{ClientError, rpcs::docs::DocExample};
 
 static GET_BALANCE_PARAMS_EXAMPLE: LazyLock<GetBalanceParams> =
     LazyLock::new(|| GetBalanceParams {
         address: EthAddress::from(evm::Address::ZERO),
-        block: BlockNumberParam::Tag(BlockTag::Latest),
+        block: StateBlockParam::Number(BlockNumberParam::Tag(BlockTag::Latest)),
     });
 
 /// Params for `eth_getBalance`.
@@ -26,18 +29,12 @@ static GET_BALANCE_PARAMS_EXAMPLE: LazyLock<GetBalanceParams> =
 #[serde(deny_unknown_fields)]
 pub(crate) struct GetBalanceParams {
     address: EthAddress,
-    block: BlockNumberParam,
+    block: StateBlockParam,
 }
 
 impl GetBalanceParams {
     fn address(&self) -> evm::Address {
         self.address.into_inner()
-    }
-
-    fn state_identifier(&self) -> Result<Option<GlobalStateIdentifier>, RpcError> {
-        self.block
-            .identifier()
-            .map(|maybe_identifier| maybe_identifier.map(GlobalStateIdentifier::from))
     }
 }
 
@@ -48,7 +45,7 @@ impl DocExample for GetBalanceParams {
 }
 
 #[derive(Deserialize)]
-struct PositionalParams(EthAddress, BlockNumberParam);
+struct PositionalParams(EthAddress, StateBlockParam);
 
 impl From<PositionalParams> for GetBalanceParams {
     fn from(params: PositionalParams) -> Self {
@@ -68,7 +65,7 @@ async fn resolve_purse_identifier(
     let maybe_identity = node_client
         .query_global_state(state_identifier, identity_key, vec![])
         .await
-        .map_err(internal_error)?;
+        .map_err(|error| RpcServerError::NodeRequest("EVM account identity", error))?;
 
     let identity = match maybe_identity.map(|value| value.into_inner().0) {
         Some(StoredValue::CLValue(cl_value)) => cl_value.into_t::<Key>().map_err(|error| {
@@ -108,7 +105,7 @@ async fn read_available_balance(
     {
         Ok(balance) => Ok(balance.available_balance),
         Err(ClientError::PurseNotFound) => Ok(U512::zero()),
-        Err(error) => Err(internal_error(error)),
+        Err(error) => Err(RpcServerError::NodeRequest("EVM balance", error).into()),
     }
 }
 
@@ -144,7 +141,10 @@ impl RpcWithParams for GetBalance {
         node_client: Arc<dyn NodeClient>,
         params: GetBalanceParams,
     ) -> Result<EthU256, RpcError> {
-        let state_identifier = params.state_identifier()?;
+        let state_identifier = params
+            .block
+            .resolve_state_identifier(node_client.as_ref(), PendingPolicy::Latest)
+            .await?;
         let purse_identifier =
             resolve_purse_identifier(node_client.as_ref(), state_identifier, params.address())
                 .await?;
@@ -161,18 +161,18 @@ mod tests {
     use std::collections::{BTreeMap, VecDeque};
 
     use casper_binary_port::{
-        BalanceResponse, BinaryResponse, Command, GetRequest, GlobalStateEntityQualifier,
-        GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
+        BalanceResponse, BinaryResponse, Command, ErrorCode as BinaryPortErrorCode, GetRequest,
+        GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
     };
     use casper_json_rpc::ReservedErrorCode;
     use casper_types::{
-        AccessRights, CLValue, ChainspecRawBytes, URef, account::AccountHash,
-        global_state::TrieMerkleProof,
+        AccessRights, Block, BlockIdentifier, CLValue, ChainspecRawBytes, TestBlockBuilder, URef,
+        account::AccountHash, global_state::TrieMerkleProof, testing::TestRng,
     };
     use serde_json::json;
 
     use super::*;
-    use crate::rpcs::test_utils::BinaryPortMock;
+    use crate::rpcs::{eth::types::BlockHashParam, test_utils::BinaryPortMock};
 
     const WEI_PER_MOTE: u64 = 1_000_000_000;
 
@@ -271,6 +271,17 @@ wei_per_mote = {wei_per_mote}
         let evm_address = address(1);
         let account_hash = AccountHash::new([2; 32]);
         let state_identifier = Some(GlobalStateIdentifier::BlockHeight(42));
+        let block = Block::V2(
+            TestBlockBuilder::new()
+                .height(42)
+                .build(&mut TestRng::new()),
+        );
+        client
+            .add_block_header_req_res(
+                block.clone_header(),
+                InformationRequest::BlockHeader(Some(casper_types::BlockIdentifier::Height(42))),
+            )
+            .await;
         add_identity_response(
             &client,
             state_identifier,
@@ -293,7 +304,7 @@ wei_per_mote = {wei_per_mote}
             Arc::new(client),
             GetBalanceParams {
                 address: EthAddress::from(evm_address),
-                block: BlockNumberParam::Height(EthU256::from(42u64)),
+                block: BlockNumberParam::Height(EthU256::from(42u64)).into(),
             },
         )
         .await
@@ -360,7 +371,7 @@ wei_per_mote = {wei_per_mote}
             Arc::new(client),
             GetBalanceParams {
                 address: EthAddress::from(evm_address),
-                block: BlockNumberParam::Tag(BlockTag::Latest),
+                block: BlockNumberParam::Tag(BlockTag::Latest).into(),
             },
         )
         .await
@@ -421,8 +432,8 @@ wei_per_mote = {wei_per_mote}
         ])))
         .expect("numeric block selector should parse");
         assert_eq!(
-            params.state_identifier().unwrap(),
-            Some(GlobalStateIdentifier::BlockHeight(42))
+            params.block,
+            StateBlockParam::Number(BlockNumberParam::Height(EthU256::from(42u64)))
         );
 
         let error = GetBalance::try_parse_params(Some(Params::Array(vec![json!(encoded_address)])))
@@ -436,7 +447,30 @@ wei_per_mote = {wei_per_mote}
     }
 
     #[test]
-    fn maps_supported_block_tags_to_casper_state_identifiers() {
+    fn parses_eip_1898_hash_object_selector() {
+        let encoded_address = format!("0x{}", "01".repeat(evm::ADDRESS_LENGTH));
+        let block_hash = evm::Hash::new([0x2a; evm::HASH_LENGTH]);
+        let params = GetBalance::try_parse_params(Some(Params::Array(vec![
+            json!(encoded_address),
+            json!({
+                "blockHash": block_hash,
+                "requireCanonical": false,
+            }),
+        ])))
+        .expect("EIP-1898 block hash object should parse");
+
+        assert_eq!(
+            params.block,
+            StateBlockParam::HashObject(BlockHashParam {
+                block_hash,
+                require_canonical: false,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn maps_supported_block_tags_to_casper_state_identifiers() {
+        let client = BinaryPortMock::new();
         for tag in [
             BlockTag::Latest,
             BlockTag::Pending,
@@ -445,19 +479,72 @@ wei_per_mote = {wei_per_mote}
         ] {
             let params = GetBalanceParams {
                 address: EthAddress::from(address(10)),
-                block: BlockNumberParam::Tag(tag),
+                block: BlockNumberParam::Tag(tag).into(),
             };
-            assert_eq!(params.state_identifier().unwrap(), None);
+            assert_eq!(
+                params
+                    .block
+                    .resolve_state_identifier(&client, PendingPolicy::Latest)
+                    .await
+                    .unwrap(),
+                None
+            );
         }
 
         let earliest = GetBalanceParams {
             address: EthAddress::from(address(10)),
-            block: BlockNumberParam::Tag(BlockTag::Earliest),
+            block: BlockNumberParam::Tag(BlockTag::Earliest).into(),
         };
         assert_eq!(
-            earliest.state_identifier().unwrap(),
+            earliest
+                .block
+                .resolve_state_identifier(&client, PendingPolicy::Latest)
+                .await
+                .unwrap(),
             Some(GlobalStateIdentifier::BlockHeight(0))
         );
+    }
+
+    #[tokio::test]
+    async fn pruned_historical_state_returns_no_such_state_root() {
+        let client = Arc::new(BinaryPortMock::new());
+        let evm_address = address(11);
+        let block = Block::V2(
+            TestBlockBuilder::new()
+                .height(42)
+                .build(&mut TestRng::new()),
+        );
+        client
+            .add_block_header_req_res(
+                block.clone_header(),
+                InformationRequest::BlockHeader(Some(BlockIdentifier::Height(42))),
+            )
+            .await;
+        client
+            .when_then(
+                state_request(
+                    Some(GlobalStateIdentifier::BlockHeight(42)),
+                    GlobalStateEntityQualifier::Item {
+                        base_key: Key::Evm(EvmAddr::Account(evm_address)),
+                        path: Vec::new(),
+                    },
+                ),
+                BinaryResponse::new_error(BinaryPortErrorCode::RootNotFound),
+            )
+            .await;
+
+        let error = GetBalance::do_handle_request(
+            client.clone(),
+            GetBalanceParams {
+                address: evm_address.into(),
+                block: BlockNumberParam::Height(EthU256::from(42u64)).into(),
+            },
+        )
+        .await
+        .expect_err("pruned balance state should fail");
+
+        assert_eq!(error.code(), crate::rpcs::ErrorCode::NoSuchStateRoot as i64);
+        client.verify_no_lingering().await;
     }
 
     #[test]

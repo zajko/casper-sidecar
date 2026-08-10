@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "node batch.mjs",
-    "test:transaction": "node transaction.mjs"
+    "test:transaction": "node transaction.mjs",
+    "test:storage": "node storage.mjs"
   },
   "dependencies": {
     "ethers": "6.15.0"

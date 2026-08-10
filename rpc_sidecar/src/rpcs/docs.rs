@@ -25,7 +25,8 @@ use super::{
         GetBalance as EthGetBalance, GetBlockByHash as EthGetBlockByHash,
         GetBlockByNumber as EthGetBlockByNumber, GetCode as EthGetCode,
         GetFilterChanges as EthGetFilterChanges, GetFilterLogs as EthGetFilterLogs,
-        GetLogs as EthGetLogs, GetTransactionByHash as EthGetTransactionByHash,
+        GetLogs as EthGetLogs, GetStorageAt as EthGetStorageAt,
+        GetTransactionByHash as EthGetTransactionByHash,
         GetTransactionCount as EthGetTransactionCount,
         GetTransactionReceipt as EthGetTransactionReceipt,
         MaxPriorityFeePerGas as EthMaxPriorityFeePerGas, NetVersion as EthNetVersion,
@@ -130,6 +131,9 @@ fn build_open_rpc_schema() -> OpenRpcSchema {
     schema.push_with_params::<EthGetBlockByNumber>("returns an Ethereum-compatible block");
     schema.push_with_params::<EthGetBalance>("returns an EVM account balance in wei");
     schema.push_with_params::<EthGetCode>("returns EVM bytecode stored at an address");
+    schema.push_with_params::<EthGetStorageAt>(
+        "returns the 32-byte value stored at an EVM contract storage slot",
+    );
     schema.push_with_params::<EthGetTransactionCount>("returns an EVM account nonce");
     schema.push_with_params::<EthSendRawTransaction>(
         "submits a signed Ethereum transaction as a Casper EVM transaction",
@@ -702,6 +706,12 @@ mod tests {
                 .methods
                 .iter()
                 .any(|method| method.name == "eth_getCode")
+        );
+        assert!(
+            schema
+                .methods
+                .iter()
+                .any(|method| method.name == "eth_getStorageAt")
         );
         assert!(
             schema

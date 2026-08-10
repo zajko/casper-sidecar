@@ -1,13 +1,16 @@
 use std::sync::LazyLock;
 
 use casper_json_rpc::{Error as RpcError, Params, ReservedErrorCode};
-use casper_types::{BlockIdentifier, evm};
+use casper_types::{BlockHash, BlockIdentifier, Digest, GlobalStateIdentifier, evm};
 use schemars::{JsonSchema, r#gen::SchemaGenerator, schema::Schema};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 use super::eth_u256::EthU256;
-use crate::rpcs::docs::DocExample;
+use crate::{
+    NodeClient,
+    rpcs::{ErrorCode, common::get_block_header, docs::DocExample},
+};
 
 pub(super) const DEFAULT_ETH_CALL_GAS_LIMIT: u64 = 30_000_000;
 
@@ -191,6 +194,138 @@ impl BlockNumberParam {
     }
 }
 
+/// How a JSON-RPC method handles the `pending` block tag.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum PendingPolicy {
+    /// Resolve pending state to the latest complete Casper state.
+    Latest,
+    /// Reject pending state because the method requires a complete block.
+    Reject,
+}
+
+/// EIP-1898 block hash object.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct BlockHashParam {
+    pub(super) block_hash: evm::Hash,
+    #[serde(default)]
+    pub(super) require_canonical: bool,
+}
+
+/// EIP-1898 block number object.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct BlockNumberObjectParam {
+    pub(super) block_number: EthU256,
+}
+
+/// Ethereum state selector supporting EIP-1898 and raw block hashes.
+///
+/// Hash forms precede quantity forms so a 32-byte hexadecimal string is interpreted as a block
+/// hash, matching the released Ethereum Execution API schema.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub(crate) enum StateBlockParam {
+    /// An EIP-1898 block hash object.
+    HashObject(BlockHashParam),
+    /// An EIP-1898 block number object.
+    NumberObject(BlockNumberObjectParam),
+    /// A raw 32-byte block hash.
+    Hash(evm::Hash),
+    /// A named tag or concrete block height.
+    Number(BlockNumberParam),
+}
+
+impl Default for StateBlockParam {
+    fn default() -> Self {
+        StateBlockParam::Number(BlockNumberParam::default())
+    }
+}
+
+impl From<BlockNumberParam> for StateBlockParam {
+    fn from(value: BlockNumberParam) -> Self {
+        StateBlockParam::Number(value)
+    }
+}
+
+impl StateBlockParam {
+    /// Resolves this selector and validates every explicit height or hash against node storage.
+    pub(super) async fn resolve_block_identifier(
+        &self,
+        node_client: &dyn NodeClient,
+        pending_policy: PendingPolicy,
+    ) -> Result<Option<BlockIdentifier>, RpcError> {
+        match *self {
+            StateBlockParam::Number(BlockNumberParam::Tag(BlockTag::Pending)) => {
+                match pending_policy {
+                    PendingPolicy::Latest => Ok(None),
+                    PendingPolicy::Reject => {
+                        Err(invalid_params("eth_call does not support pending state"))
+                    }
+                }
+            }
+            StateBlockParam::Number(BlockNumberParam::Tag(BlockTag::Earliest)) => {
+                Ok(Some(BlockIdentifier::Height(0)))
+            }
+            StateBlockParam::Number(BlockNumberParam::Tag(
+                BlockTag::Latest | BlockTag::Safe | BlockTag::Finalized,
+            )) => Ok(None),
+            StateBlockParam::Number(BlockNumberParam::Height(height))
+            | StateBlockParam::NumberObject(BlockNumberObjectParam {
+                block_number: height,
+            }) => {
+                let identifier = BlockIdentifier::Height(height.as_u64().map_err(invalid_params)?);
+                get_block_header(node_client, Some(identifier)).await?;
+                Ok(Some(identifier))
+            }
+            StateBlockParam::Hash(block_hash) => {
+                resolve_block_hash(node_client, block_hash, false).await
+            }
+            StateBlockParam::HashObject(BlockHashParam {
+                block_hash,
+                require_canonical,
+            }) => resolve_block_hash(node_client, block_hash, require_canonical).await,
+        }
+    }
+
+    /// Resolves this selector for a global-state query.
+    pub(super) async fn resolve_state_identifier(
+        &self,
+        node_client: &dyn NodeClient,
+        pending_policy: PendingPolicy,
+    ) -> Result<Option<GlobalStateIdentifier>, RpcError> {
+        self.resolve_block_identifier(node_client, pending_policy)
+            .await
+            .map(|identifier| identifier.map(GlobalStateIdentifier::from))
+    }
+}
+
+async fn resolve_block_hash(
+    node_client: &dyn NodeClient,
+    block_hash: evm::Hash,
+    require_canonical: bool,
+) -> Result<Option<BlockIdentifier>, RpcError> {
+    let identifier = BlockIdentifier::Hash(BlockHash::new(Digest::from_raw(block_hash.value())));
+    // Resolve the requested hash first so block-not-found takes precedence over canonicality.
+    let selected_header = get_block_header(node_client, Some(identifier)).await?;
+
+    if require_canonical {
+        let canonical_header = get_block_header(
+            node_client,
+            Some(BlockIdentifier::Height(selected_header.height())),
+        )
+        .await?;
+        if canonical_header.block_hash() != selected_header.block_hash() {
+            return Err(RpcError::new(
+                ErrorCode::InvalidBlock,
+                "requested block is not canonical",
+            ));
+        }
+    }
+
+    Ok(Some(identifier))
+}
+
 pub(super) fn parse_positional_params<T>(maybe_params: Option<Params>) -> Result<T, RpcError>
 where
     T: DeserializeOwned,
@@ -259,7 +394,14 @@ fn bytes_hex(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use casper_binary_port::{BinaryResponse, Command, InformationRequest};
+    use casper_types::{
+        AvailableBlockRange, Block, BlockHeader, TestBlockBuilder, testing::TestRng,
+    };
+    use serde_json::json;
+
     use super::*;
+    use crate::rpcs::test_utils::BinaryPortMock;
 
     #[test]
     fn evm_hash_uses_json_rpc_hex_prefix() {
@@ -274,5 +416,304 @@ mod tests {
             serde_json::from_str::<evm::Hash>(&encoded).expect("evm hash should parse"),
             hash
         );
+    }
+
+    #[test]
+    fn state_block_param_accepts_all_supported_wire_shapes() {
+        let hash = evm::Hash::new([0xab; evm::HASH_LENGTH]);
+        let hash_hex = format!("0x{}", hash.to_hex_string());
+
+        let cases = [
+            (
+                json!("latest"),
+                StateBlockParam::Number(BlockNumberParam::Tag(BlockTag::Latest)),
+            ),
+            (
+                json!("0x1234"),
+                StateBlockParam::Number(BlockNumberParam::Height(EthU256::from(0x1234u64))),
+            ),
+            (json!(hash_hex.clone()), StateBlockParam::Hash(hash)),
+            (
+                json!({ "blockNumber": "0x1234" }),
+                StateBlockParam::NumberObject(BlockNumberObjectParam {
+                    block_number: EthU256::from(0x1234u64),
+                }),
+            ),
+            (
+                json!({ "blockHash": hash_hex.clone() }),
+                StateBlockParam::HashObject(BlockHashParam {
+                    block_hash: hash,
+                    require_canonical: false,
+                }),
+            ),
+            (
+                json!({ "blockHash": hash_hex.clone(), "requireCanonical": false }),
+                StateBlockParam::HashObject(BlockHashParam {
+                    block_hash: hash,
+                    require_canonical: false,
+                }),
+            ),
+            (
+                json!({ "blockHash": hash_hex, "requireCanonical": true }),
+                StateBlockParam::HashObject(BlockHashParam {
+                    block_hash: hash,
+                    require_canonical: true,
+                }),
+            ),
+        ];
+
+        for (value, expected) in cases {
+            assert_eq!(
+                serde_json::from_value::<StateBlockParam>(value).unwrap(),
+                expected
+            );
+        }
+
+        for tag in ["earliest", "pending", "safe", "finalized"] {
+            serde_json::from_value::<StateBlockParam>(json!(tag))
+                .expect("supported block tag should parse");
+        }
+    }
+
+    #[test]
+    fn state_block_param_rejects_invalid_eip_1898_objects() {
+        let hash = format!("0x{}", "ab".repeat(evm::HASH_LENGTH));
+        for value in [
+            json!({}),
+            json!({ "requireCanonical": true }),
+            json!({ "blockHash": hash, "blockNumber": "0x1" }),
+            json!({ "blockNumber": "0x1", "requireCanonical": true }),
+            json!({ "blockHash": hash, "unknown": true }),
+            json!({ "blockNumber": "0x1", "unknown": true }),
+            json!({ "blockHash": hash, "requireCanonical": "true" }),
+            json!({ "blockHash": hash, "requireCanonical": null }),
+            json!({ "blockHash": "0x1234" }),
+            json!({ "blockHash": format!("0x{}", "gg".repeat(evm::HASH_LENGTH)) }),
+            json!({ "blockNumber": "latest" }),
+            json!({ "blockNumber": format!("0x1{}", "0".repeat(64)) }),
+        ] {
+            serde_json::from_value::<StateBlockParam>(value)
+                .expect_err("invalid EIP-1898 object should be rejected");
+        }
+    }
+
+    #[tokio::test]
+    async fn state_block_param_preserves_tag_policy() {
+        let client = BinaryPortMock::new();
+        for tag in [BlockTag::Latest, BlockTag::Safe, BlockTag::Finalized] {
+            assert_eq!(
+                StateBlockParam::Number(BlockNumberParam::Tag(tag))
+                    .resolve_state_identifier(&client, PendingPolicy::Latest)
+                    .await
+                    .unwrap(),
+                None
+            );
+        }
+        assert_eq!(
+            StateBlockParam::Number(BlockNumberParam::Tag(BlockTag::Pending))
+                .resolve_state_identifier(&client, PendingPolicy::Latest)
+                .await
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            StateBlockParam::Number(BlockNumberParam::Tag(BlockTag::Earliest))
+                .resolve_state_identifier(&client, PendingPolicy::Latest)
+                .await
+                .unwrap(),
+            Some(GlobalStateIdentifier::BlockHeight(0))
+        );
+
+        let error = StateBlockParam::Number(BlockNumberParam::Tag(BlockTag::Pending))
+            .resolve_block_identifier(&client, PendingPolicy::Reject)
+            .await
+            .expect_err("pending must be rejected for eth_call");
+        assert_eq!(error.code(), ReservedErrorCode::InvalidParams as i64);
+        client.verify_no_lingering().await;
+    }
+
+    #[tokio::test]
+    async fn canonical_block_number_object_is_validated_before_being_resolved() {
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().height(42).build(rng));
+        let client = BinaryPortMock::new();
+        client
+            .add_block_header_req_res(
+                block.clone_header(),
+                InformationRequest::BlockHeader(Some(BlockIdentifier::Height(42))),
+            )
+            .await;
+
+        let result = StateBlockParam::NumberObject(BlockNumberObjectParam {
+            block_number: EthU256::from(42u64),
+        })
+        .resolve_state_identifier(&client, PendingPolicy::Latest)
+        .await
+        .unwrap();
+
+        assert_eq!(result, Some(GlobalStateIdentifier::BlockHeight(42)));
+        client.verify_no_lingering().await;
+    }
+
+    #[tokio::test]
+    async fn missing_block_number_object_returns_no_such_block() {
+        let client = BinaryPortMock::new();
+        let header_request = InformationRequest::BlockHeader(Some(BlockIdentifier::Height(42)))
+            .try_into()
+            .unwrap();
+        client
+            .when_then(
+                Command::Get(header_request),
+                BinaryResponse::from_option(None::<BlockHeader>),
+            )
+            .await;
+        let range_request = InformationRequest::AvailableBlockRange.try_into().unwrap();
+        client
+            .when_then(
+                Command::Get(range_request),
+                BinaryResponse::from_value(AvailableBlockRange::new(10, 20)),
+            )
+            .await;
+
+        let error = StateBlockParam::NumberObject(BlockNumberObjectParam {
+            block_number: EthU256::from(42u64),
+        })
+        .resolve_block_identifier(&client, PendingPolicy::Latest)
+        .await
+        .expect_err("missing block number must fail validation");
+
+        assert_eq!(error.code(), ErrorCode::NoSuchBlock as i64);
+        client.verify_no_lingering().await;
+    }
+
+    #[tokio::test]
+    async fn hash_forms_resolve_known_noncanonical_block_without_canonical_check() {
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().height(42).build(rng));
+        let block_hash = *block.hash();
+        for selector in [
+            StateBlockParam::Hash(block_hash_to_evm_hash(block_hash)),
+            StateBlockParam::HashObject(BlockHashParam {
+                block_hash: block_hash_to_evm_hash(block_hash),
+                require_canonical: false,
+            }),
+        ] {
+            let client = BinaryPortMock::new();
+            client
+                .add_block_header_req_res(
+                    block.clone_header(),
+                    InformationRequest::BlockHeader(Some(BlockIdentifier::Hash(block_hash))),
+                )
+                .await;
+
+            let result = selector
+                .resolve_state_identifier(&client, PendingPolicy::Latest)
+                .await
+                .unwrap();
+
+            assert_eq!(result, Some(GlobalStateIdentifier::BlockHash(block_hash)));
+            client.verify_no_lingering().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn require_canonical_accepts_canonical_hash() {
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().height(42).build(rng));
+        let block_hash = *block.hash();
+        let client = BinaryPortMock::new();
+        client
+            .add_block_header_req_res(
+                block.clone_header(),
+                InformationRequest::BlockHeader(Some(BlockIdentifier::Hash(block_hash))),
+            )
+            .await;
+        client
+            .add_block_header_req_res(
+                block.clone_header(),
+                InformationRequest::BlockHeader(Some(BlockIdentifier::Height(42))),
+            )
+            .await;
+
+        let result = StateBlockParam::HashObject(BlockHashParam {
+            block_hash: block_hash_to_evm_hash(block_hash),
+            require_canonical: true,
+        })
+        .resolve_block_identifier(&client, PendingPolicy::Latest)
+        .await
+        .unwrap();
+
+        assert_eq!(result, Some(BlockIdentifier::Hash(block_hash)));
+        client.verify_no_lingering().await;
+    }
+
+    #[tokio::test]
+    async fn require_canonical_rejects_noncanonical_hash() {
+        let rng = &mut TestRng::new();
+        let selected = Block::V2(TestBlockBuilder::new().height(42).build(rng));
+        let canonical = Block::V2(TestBlockBuilder::new().height(42).build(rng));
+        assert_ne!(selected.hash(), canonical.hash());
+        let selected_hash = *selected.hash();
+        let client = BinaryPortMock::new();
+        client
+            .add_block_header_req_res(
+                selected.clone_header(),
+                InformationRequest::BlockHeader(Some(BlockIdentifier::Hash(selected_hash))),
+            )
+            .await;
+        client
+            .add_block_header_req_res(
+                canonical.clone_header(),
+                InformationRequest::BlockHeader(Some(BlockIdentifier::Height(42))),
+            )
+            .await;
+
+        let error = StateBlockParam::HashObject(BlockHashParam {
+            block_hash: block_hash_to_evm_hash(selected_hash),
+            require_canonical: true,
+        })
+        .resolve_block_identifier(&client, PendingPolicy::Latest)
+        .await
+        .expect_err("noncanonical block must be rejected");
+
+        assert_eq!(
+            error,
+            RpcError::new(ErrorCode::InvalidBlock, "requested block is not canonical")
+        );
+        client.verify_no_lingering().await;
+    }
+
+    #[tokio::test]
+    async fn missing_hash_returns_no_such_block_before_canonicality_check() {
+        let block_hash = BlockHash::new(Digest::from_raw([0x44; 32]));
+        let client = BinaryPortMock::new();
+        let header_request =
+            InformationRequest::BlockHeader(Some(BlockIdentifier::Hash(block_hash)))
+                .try_into()
+                .unwrap();
+        client
+            .when_then(
+                Command::Get(header_request),
+                BinaryResponse::from_option(None::<BlockHeader>),
+            )
+            .await;
+        let range_request = InformationRequest::AvailableBlockRange.try_into().unwrap();
+        client
+            .when_then(
+                Command::Get(range_request),
+                BinaryResponse::from_value(AvailableBlockRange::new(10, 20)),
+            )
+            .await;
+
+        let error = StateBlockParam::HashObject(BlockHashParam {
+            block_hash: block_hash_to_evm_hash(block_hash),
+            require_canonical: true,
+        })
+        .resolve_block_identifier(&client, PendingPolicy::Latest)
+        .await
+        .expect_err("missing block must fail before canonicality lookup");
+
+        assert_eq!(error.code(), ErrorCode::NoSuchBlock as i64);
+        client.verify_no_lingering().await;
     }
 }
