@@ -1,3 +1,4 @@
+mod build_info;
 mod caching_node_client;
 mod config;
 mod http_server;

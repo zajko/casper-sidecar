@@ -93,7 +93,7 @@ static GET_STATUS_RESULT: LazyLock<GetStatusResult> = LazyLock::new(|| GetStatus
     block_sync: BlockSynchronizerStatus::example().clone(),
     latest_switch_block_hash: Some(BlockHash::default()),
     #[cfg(not(test))]
-    build_version: version_string(),
+    build_version: crate::build_info::sidecar_release_version(),
 
     //  Prevent these values from changing between test sessions
     #[cfg(test)]
@@ -602,30 +602,6 @@ impl RpcWithParams for GetReward {
             switch_block_hash: result.switch_block_hash(),
         })
     }
-}
-
-#[cfg(not(test))]
-fn version_string() -> String {
-    use std::env;
-    use tracing::warn;
-
-    let mut version = env!("CARGO_PKG_VERSION").to_string();
-    if let Ok(git_sha) = env::var("VERGEN_GIT_SHA") {
-        version = format!("{version}-{git_sha}");
-    } else {
-        warn!(
-            "vergen env var unavailable, casper-node build version will not include git short hash"
-        );
-    }
-
-    // Add a `@DEBUG` (or similar) tag to release string on non-release builds.
-    if env!("VERGEN_CARGO_OPT_LEVEL") != "release" {
-        version += "@";
-        let profile = env!("VERGEN_CARGO_OPT_LEVEL").to_uppercase();
-        version.push_str(&profile);
-    }
-
-    version
 }
 
 #[cfg(test)]

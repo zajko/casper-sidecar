@@ -1822,6 +1822,27 @@
       ]
     },
     {
+      "name": "web3_clientVersion",
+      "summary": "returns the Casper RPC sidecar build identity",
+      "params": [],
+      "result": {
+        "name": "web3_clientVersion_result",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "examples": [
+        {
+          "name": "web3_clientVersion_example",
+          "params": [],
+          "result": {
+            "name": "web3_clientVersion_example_result",
+            "value": "CasperSidecar/v2.0.0-01234567/aarch64-unknown-linux-gnu/rustc1.91.0"
+          }
+        }
+      ]
+    },
+    {
       "name": "eth_chainId",
       "summary": "returns the configured EVM chain ID",
       "params": [],

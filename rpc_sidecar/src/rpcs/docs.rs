@@ -21,11 +21,11 @@ use super::{
     },
     eth::{
         BlockNumber as EthBlockNumber, Call as EthCall, ChainId as EthChainId,
-        EstimateGas as EthEstimateGas, FeeHistory as EthFeeHistory, GasPrice as EthGasPrice,
-        GetBalance as EthGetBalance, GetBlockByHash as EthGetBlockByHash,
-        GetBlockByNumber as EthGetBlockByNumber, GetCode as EthGetCode,
-        GetFilterChanges as EthGetFilterChanges, GetFilterLogs as EthGetFilterLogs,
-        GetLogs as EthGetLogs, GetStorageAt as EthGetStorageAt,
+        ClientVersion as Web3ClientVersion, EstimateGas as EthEstimateGas,
+        FeeHistory as EthFeeHistory, GasPrice as EthGasPrice, GetBalance as EthGetBalance,
+        GetBlockByHash as EthGetBlockByHash, GetBlockByNumber as EthGetBlockByNumber,
+        GetCode as EthGetCode, GetFilterChanges as EthGetFilterChanges,
+        GetFilterLogs as EthGetFilterLogs, GetLogs as EthGetLogs, GetStorageAt as EthGetStorageAt,
         GetTransactionByHash as EthGetTransactionByHash,
         GetTransactionCount as EthGetTransactionCount,
         GetTransactionReceipt as EthGetTransactionReceipt,
@@ -115,6 +115,8 @@ fn build_open_rpc_schema() -> OpenRpcSchema {
         "returns the raw bytes of the chainspec.toml, genesis accounts.toml, and \
         global_state.toml files",
     );
+    schema
+        .push_without_params::<Web3ClientVersion>("returns the Casper RPC sidecar build identity");
     schema.push_without_params::<EthChainId>("returns the configured EVM chain ID");
     schema.push_without_params::<EthNetVersion>(
         "returns the configured EVM network ID as a decimal string",
@@ -677,6 +679,25 @@ mod tests {
         let schema = std::panic::catch_unwind(build_open_rpc_schema)
             .expect("OpenRPC schema generation should not panic");
 
+        assert!(
+            schema
+                .methods
+                .iter()
+                .any(|method| method.name == "web3_clientVersion")
+        );
+        let client_version = schema
+            .methods
+            .iter()
+            .find(|method| method.name == "web3_clientVersion")
+            .expect("web3_clientVersion should be documented");
+        assert!(client_version.params.is_empty());
+        assert_eq!(
+            serde_json::to_value(&client_version.result.schema)
+                .expect("client version schema should serialize")
+                .get("type"),
+            Some(&Value::String("string".to_string()))
+        );
+        assert!(client_version.examples[0].result.value.is_string());
         assert!(
             schema
                 .methods
