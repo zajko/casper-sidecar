@@ -22,9 +22,6 @@ fn is_catching_up(reactor_state: &str) -> bool {
     matches!(reactor_state, "Initialize" | "CatchUp")
 }
 
-/// `BlockSynchronizerStatus`'s fields are only reachable via (de)serialization outside of
-/// casper-node's own test builds, so the forward/historical sync targets are recovered by
-/// mirroring its JSON shape rather than through accessor methods.
 fn highest_known_block_height(block_sync: &BlockSynchronizerStatus, fallback: u64) -> u64 {
     #[derive(Default, Deserialize)]
     struct BlockSyncStatusMirror {
@@ -36,8 +33,6 @@ fn highest_known_block_height(block_sync: &BlockSynchronizerStatus, fallback: u6
     struct BlockSynchronizerStatusMirror {
         #[serde(default)]
         forward: Option<BlockSyncStatusMirror>,
-        #[serde(default)]
-        historical: Option<BlockSyncStatusMirror>,
     }
 
     let mirror: BlockSynchronizerStatusMirror = serde_json::to_value(block_sync)
@@ -48,7 +43,6 @@ fn highest_known_block_height(block_sync: &BlockSynchronizerStatus, fallback: u6
     mirror
         .forward
         .and_then(|status| status.block_height)
-        .or_else(|| mirror.historical.and_then(|status| status.block_height))
         .unwrap_or(fallback)
 }
 
@@ -113,10 +107,12 @@ impl RpcWithoutParams for Syncing {
 
 #[cfg(test)]
 mod tests {
-    use casper_binary_port::{BinaryResponse, Command, InformationRequest, NodeStatus, ReactorStateName};
+    use casper_binary_port::{
+        BinaryResponse, Command, InformationRequest, NodeStatus, ReactorStateName,
+    };
     use casper_types::{
-        AvailableBlockRange, BlockSynchronizerStatus, Peers, ProtocolVersion, TimeDiff,
-        Timestamp, testing::TestRng,
+        AvailableBlockRange, BlockSynchronizerStatus, Peers, ProtocolVersion, TimeDiff, Timestamp,
+        testing::TestRng,
     };
     use serde_json::json;
 
@@ -157,9 +153,11 @@ mod tests {
 
     #[tokio::test]
     async fn reports_false_once_caught_up() {
-        let client =
-            client_with_status(node_status("KeepUp", BlockSynchronizerStatus::new(None, None)))
-                .await;
+        let client = client_with_status(node_status(
+            "KeepUp",
+            BlockSynchronizerStatus::new(None, None),
+        ))
+        .await;
 
         let result = Syncing::do_handle_request(Arc::new(client))
             .await
