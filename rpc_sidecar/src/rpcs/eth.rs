@@ -29,6 +29,7 @@ mod subscriptions;
 mod transaction_response;
 mod types;
 mod uninstall_filter;
+mod web3_client_version;
 
 pub use block_number::BlockNumber;
 pub use call::Call;
@@ -56,3 +57,4 @@ pub(crate) use subscriptions::{
     SUBSCRIBE_METHOD, UNSUBSCRIBE_METHOD, WebSocketOriginPolicy, websocket_route,
 };
 pub use uninstall_filter::UninstallFilter;
+pub use web3_client_version::ClientVersion;

@@ -7,9 +7,9 @@ npm install
 CASPER_RPC_URL=http://127.0.0.1:7777/rpc npm test
 ```
 
-The test intentionally constructs `JsonRpcProvider` without `batchMaxCount: 1` and issues three
-requests in one event-loop turn. It fails if the sidecar cannot process ethers v6's default batch
-envelope.
+The test intentionally constructs `JsonRpcProvider` without `batchMaxCount: 1` and issues four
+requests in one event-loop turn, including `web3_clientVersion`. It fails if the sidecar cannot
+process ethers v6's default batch envelope or does not identify itself as `CasperSidecar`.
 
 To smoke-test a transaction lookup and hydrated block, provide the hash of an
 EVM transaction already included in a block:
