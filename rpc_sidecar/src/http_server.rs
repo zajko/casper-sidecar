@@ -30,7 +30,7 @@ use super::rpcs::{
         GetTransactionReceipt as EthGetTransactionReceipt,
         MaxPriorityFeePerGas as EthMaxPriorityFeePerGas, NetVersion as EthNetVersion,
         NewFilter as EthNewFilter, SUBSCRIBE_METHOD, SendRawTransaction as EthSendRawTransaction,
-        UNSUBSCRIBE_METHOD, UninstallFilter as EthUninstallFilter,
+        Syncing as EthSyncing, UNSUBSCRIBE_METHOD, UninstallFilter as EthUninstallFilter,
     },
     info::{GetChainspec, GetDeploy, GetValidatorChanges},
     state::{
@@ -117,6 +117,7 @@ pub async fn run(
     register!(EthMaxPriorityFeePerGas);
     register!(EthFeeHistory);
     register!(EthBlockNumber);
+    register!(EthSyncing);
     register!(EthGetBlockByHash);
     register!(EthGetBlockByNumber);
     register!(EthGetBalance);
