@@ -213,6 +213,7 @@ default_limit_period = "1s"
 [rpc_server.node_client]
 ip_address = '0.0.0.0'
 port = 28101
+rest_port = 8888
 max_message_size_bytes = 4_194_304
 message_timeout_secs = 10
 client_access_timeout_secs = 10
@@ -262,6 +263,7 @@ max_attempts = 30
 
 - `node_client.ip_address` - Ip address of the Casper Node binary port.
 - `node_client.port` - Port of the Casper Node binary port.
+- `node_client.rest_port` - Port of the Casper Node's REST API. Used to fetch node status over HTTP (`GET /status`) for endpoints such as `eth_syncing`, instead of the binary port.
 - `node_client.max_message_size_bytes` - Maximum binary port message size in bytes.
 - `node_client.message_timeout_secs` - Timeout for the message.
 - `node_client.client_access_timeout_secs` - Timeout for the client connection.

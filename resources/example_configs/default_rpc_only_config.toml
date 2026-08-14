@@ -55,6 +55,9 @@ period = "1s"
 # The address of the node to connect to.
 ip_address = '127.0.0.1'
 port = 7779
+# The node's REST API port, used to fetch node status over HTTP (e.g. for eth_syncing) instead
+# of the binary port.
+rest_port = 8888
 # Maximum size of a message in bytes.
 max_message_size_bytes = 134_217_728
 # Timeout for a node request in seconds.

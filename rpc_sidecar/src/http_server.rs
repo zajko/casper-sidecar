@@ -69,6 +69,7 @@ pub async fn run(
 ) {
     let mut handlers = RequestHandlersBuilder::new();
     let eth_filter_state = Arc::new(EthFilterState::new());
+    let eth_syncing_state = Arc::new(EthSyncing::new());
 
     macro_rules! register_with_context {
         ($rpc:ident, $($context:expr),+ $(,)?) => {{
@@ -117,7 +118,7 @@ pub async fn run(
     register!(EthMaxPriorityFeePerGas);
     register!(EthFeeHistory);
     register!(EthBlockNumber);
-    register!(EthSyncing);
+    register_with_context!(EthSyncing, eth_syncing_state.clone(), node.clone());
     register!(EthGetBlockByHash);
     register!(EthGetBlockByNumber);
     register!(EthGetBalance);
