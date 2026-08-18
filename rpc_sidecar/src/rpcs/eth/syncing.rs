@@ -653,7 +653,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn status_updater_keeps_previous_cache_when_poll_fails() {
+    async fn status_updater_flushes_cache_on_failure() {
         let state = Arc::new(Syncing::new());
         poll_and_cache(
             &state,
@@ -669,9 +669,13 @@ mod tests {
         settle().await;
         let result = Syncing::do_handle_request(state.clone())
             .await
-            .expect("previous cache should still be served");
+            .err()
+            .expect("expected error");
 
-        assert_eq!(result, SyncingResult::NotSyncing(false));
+        assert_eq!(
+            result,
+            internal_error("node sync status is not yet available, try again shortly")
+        );
 
         updater.abort();
     }
