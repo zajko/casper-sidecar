@@ -150,6 +150,7 @@ impl Syncing {
                 }
                 Err(err) => {
                     warn!(%err, "eth_syncing: failed to refresh node status after retries");
+                    *state.cached_result.lock().await = None;
                 }
             }
         }
