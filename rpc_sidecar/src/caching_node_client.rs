@@ -1,6 +1,7 @@
 use crate::{
     ClientError, NodeClient,
     binary_port_cache::{BinaryPortCache, InFlightDataHandling},
+    node_client::RestNodeStatus,
     parse_response,
 };
 use anyhow::Error;
@@ -40,6 +41,10 @@ impl<T: NodeClient + Send + Sync, C: BinaryPortCache + InFlightDataHandling> Nod
 {
     async fn send_request(&self, req: Command) -> Result<BinaryResponseAndRequest, ClientError> {
         self.inner_client.send_request(req).await
+    }
+
+    async fn read_rest_node_status(&self) -> Result<RestNodeStatus, ClientError> {
+        self.inner_client.read_rest_node_status().await
     }
 
     async fn read_block_with_signatures(
@@ -243,15 +248,64 @@ pub(crate) async fn cache_update_loop<
 mod tests {
     use super::{CachingNodeClient, cache_update_loop};
     use crate::binary_port_cache::{BinaryPortCache, HeedBinaryPortCache};
-    use crate::{NodeClient, rpcs::test_utils::BinaryPortMock};
-    use casper_binary_port::InformationRequest;
+    use crate::node_client::RestNodeStatus;
+    use crate::{ClientError, NodeClient, rpcs::test_utils::BinaryPortMock};
+    use async_trait::async_trait;
+    use casper_binary_port::{BinaryResponseAndRequest, Command, InformationRequest};
     use casper_event_types::SidecarEvent;
     use casper_types::{
-        Block, BlockSignatures, BlockWithSignatures, EraId, TestBlockBuilder, testing::TestRng,
+        AvailableBlockRange, Block, BlockSignatures, BlockSynchronizerStatus, BlockWithSignatures,
+        EraId, TestBlockBuilder, testing::TestRng,
     };
     use rand::Rng;
     use std::{sync::Arc, time::Duration};
     use tokio::sync::broadcast;
+
+    /// Inner client whose `read_rest_node_status` is distinguishable from the trait's default
+    /// (which reports the request as unsupported), so a test can prove `CachingNodeClient`
+    /// forwards to it rather than silently falling back to that default.
+    struct RestStatusOnlyMock {
+        status: RestNodeStatus,
+    }
+
+    #[async_trait]
+    impl NodeClient for RestStatusOnlyMock {
+        async fn send_request(
+            &self,
+            req: Command,
+        ) -> Result<BinaryResponseAndRequest, ClientError> {
+            unimplemented!("not needed for this test, got: {:?}", req)
+        }
+
+        async fn read_rest_node_status(&self) -> Result<RestNodeStatus, ClientError> {
+            Ok(self.status.clone())
+        }
+    }
+
+    /// `CachingNodeClient` only overrides the methods it needs to add caching behavior to; every
+    /// other `NodeClient` method must be forwarded to the inner client explicitly, since an
+    /// un-overridden method resolves to the trait's own default rather than delegating to the
+    /// wrapped client. `read_rest_node_status`'s default reports the request as unsupported, so a
+    /// missing forward would silently break `eth_syncing` in production.
+    #[tokio::test]
+    async fn read_rest_node_status_is_forwarded_to_inner_client() {
+        let status = RestNodeStatus {
+            reactor_state: "KeepUp".to_string(),
+            available_block_range: AvailableBlockRange::new(5, 100),
+            block_sync: BlockSynchronizerStatus::new(None, None),
+        };
+        let inner = Arc::new(RestStatusOnlyMock {
+            status: status.clone(),
+        });
+        let under_test = CachingNodeClient::new(inner, None::<Arc<HeedBinaryPortCache>>);
+
+        let got = under_test
+            .read_rest_node_status()
+            .await
+            .expect("should forward to inner client rather than hit the unsupported default");
+
+        assert_eq!(got, status);
+    }
 
     /// `read_block_with_signatures(None)` ("give me the latest block") has no persistent-cache
     /// entry to serve from - the binary port cache is keyed by identifier, not "latest" - so it

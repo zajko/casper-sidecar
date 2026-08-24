@@ -34,6 +34,7 @@ num-rational = { version = "0.4", default-features = false, features = ["serde"]
 num-traits = { version = "0.2", default-features = false }
 portpicker = "0.1"
 rand = { workspace = true }
+reqwest = { version = "0.12", features = ["json"] }
 schemars = { version = "0.8", features = [
     "preserve_order",
     "impl_json_schema",
@@ -59,6 +60,7 @@ casper-types = { workspace = true, features = [
 ] }
 assert-json-diff = "2"
 casper-binary-port = { workspace = true, features = ["testing"] }
+mockito = "1.2"
 pretty_assertions = "1"
 regex = "1"
 tempfile = "3"

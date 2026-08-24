@@ -13,9 +13,9 @@ use casper_binary_port::{
     ValueWithProof,
 };
 use casper_types::{
-    AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockWithSignatures,
-    ChainspecRawBytes, Digest, EvmTransaction, GlobalStateIdentifier, Key, KeyTag, Package, Peers,
-    PublicKey, StoredValue, Transaction, TransactionHash, Transfer,
+    AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus,
+    BlockWithSignatures, ChainspecRawBytes, Digest, EvmTransaction, GlobalStateIdentifier, Key,
+    KeyTag, Package, Peers, PublicKey, StoredValue, Transaction, TransactionHash, Transfer,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::ContractPackage,
     execution::ExecutionResult,
@@ -25,7 +25,7 @@ use futures::{Future, SinkExt, StreamExt};
 use metrics::rpc::{
     inc_disconnect, observe_reconnect_time, register_mismatched_id, register_timeout,
 };
-use serde::de::DeserializeOwned;
+use serde::{Deserialize, de::DeserializeOwned};
 use std::{
     convert::{TryFrom, TryInto},
     fmt::{self, Display, Formatter},
@@ -284,6 +284,13 @@ pub trait NodeClient: Send + Sync {
         parse_response::<NodeStatus>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
+    /// Reads node status from the node's REST API (`GET /status`) rather than the binary port.
+    /// Only implementors backed by an actual node connection can serve this; the default
+    /// implementation reports the request as unsupported.
+    async fn read_rest_node_status(&self) -> Result<RestNodeStatus, Error> {
+        Err(Error::UnsupportedRequest)
+    }
+
     async fn read_reward(
         &self,
         era_identifier: Option<EraIdentifier>,
@@ -348,6 +355,16 @@ pub trait NodeClient: Send + Sync {
             ),
         }
     }
+}
+
+/// The subset of fields read from the node's REST `/status` endpoint response that's needed to
+/// determine sync progress. The endpoint returns additional fields (build version, peers, etc.)
+/// which are deliberately ignored here.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct RestNodeStatus {
+    pub reactor_state: String,
+    pub available_block_range: AvailableBlockRange,
+    pub block_sync: BlockSynchronizerStatus,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -972,6 +989,8 @@ pub enum Error {
     TransactionHasMalformedBinaryRepresentation,
     #[error("the transaction invocation target is unsupported under V2 runtime")]
     UnsupportedInvocationTarget,
+    #[error("node REST status request failed: {0}")]
+    RestRequestFailed(String),
 }
 
 impl Error {
@@ -1439,6 +1458,22 @@ impl NodeClient for FramedNodeClient {
             }
         }
         result
+    }
+
+    async fn read_rest_node_status(&self) -> Result<RestNodeStatus, Error> {
+        let url = format!(
+            "http://{}:{}/status",
+            self.config.ip_address, self.config.rest_port
+        );
+        let response = reqwest::get(&url)
+            .await
+            .map_err(|err| Error::RestRequestFailed(err.to_string()))?
+            .error_for_status()
+            .map_err(|err| Error::RestRequestFailed(err.to_string()))?;
+        response
+            .json::<RestNodeStatus>()
+            .await
+            .map_err(|err| Error::RestRequestFailed(err.to_string()))
     }
 }
 
