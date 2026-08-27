@@ -2,7 +2,7 @@ use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use casper_binary_port::EvmSpeculativeExecutionResult;
-use casper_json_rpc::{Error as RpcError, Params, ReservedErrorCode};
+use casper_json_rpc::{Error as RpcError, ErrorCodeT, Params};
 use casper_types::{
     BlockIdentifier, EvmAddr, EvmConfig, EvmTransaction, GlobalStateIdentifier, Key, TimeDiff,
     Timestamp, U256, evm,
@@ -159,6 +159,28 @@ pub(super) fn new_evm_call_transaction(
     ))
 }
 
+/// JSON-RPC error code for a reverted or halted `eth_*` endpoint execution.
+///
+/// Per the Ethereum Execution API specification (`ethereum/execution-apis`) and the de facto
+/// `EIP-1474` convention, a reverted call must use error code `3` ("execution reverted") so
+/// that tooling can distinguish a decoded EVM revert from an actual internal/transport failure.
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Deserialize)]
+#[repr(i64)]
+pub(super) enum EthCallErrorCode {
+    /// Execution reverted.
+    ExecutionReverted = 3,
+}
+
+impl From<EthCallErrorCode> for (i64, &'static str) {
+    fn from(error_code: EthCallErrorCode) -> Self {
+        match error_code {
+            EthCallErrorCode::ExecutionReverted => (error_code as i64, "execution reverted"),
+        }
+    }
+}
+
+impl ErrorCodeT for EthCallErrorCode {}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct EthCallError {
@@ -225,7 +247,7 @@ pub(super) fn ensure_evm_call_succeeded(
         return Ok(());
     }
     Err(RpcError::new(
-        ReservedErrorCode::InternalError,
+        EthCallErrorCode::ExecutionReverted,
         EthCallError {
             message: receipt
                 .status
@@ -275,6 +297,7 @@ mod tests {
         BinaryResponse, Command, ErrorCode as BinaryPortErrorCode, GetRequest,
         GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
     };
+    use casper_json_rpc::ReservedErrorCode;
     use casper_types::{
         AvailableBlockRange, Block, BlockHash, BlockHeader, ChainspecRawBytes, Gas,
         TestBlockBuilder,
