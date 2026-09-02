@@ -2612,7 +2612,7 @@
         {
           "name": "slot",
           "schema": {
-            "$ref": "#/components/schemas/EthStorageSlot"
+            "$ref": "#/components/schemas/EthBytesMax32"
           },
           "required": true
         },
@@ -2674,7 +2674,7 @@
           "schema": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/EvmHash"
+              "$ref": "#/components/schemas/EthBytesMax32"
             }
           },
           "required": true
@@ -2682,9 +2682,10 @@
         {
           "name": "block",
           "schema": {
+            "default": "latest",
             "$ref": "#/components/schemas/StateBlockParam"
           },
-          "required": true
+          "required": false
         }
       ],
       "result": {
@@ -11720,8 +11721,8 @@
           }
         }
       },
-      "EthStorageSlot": {
-        "description": "An EVM storage slot encoded as 0x-prefixed hexadecimal with 1 to 64 digits; compact and left-padded forms are accepted.",
+      "EthBytesMax32": {
+        "description": "An Ethereum bytesMax32 value encoded as 0x-prefixed hexadecimal with 1 to 64 digits; compact and left-padded forms are accepted.",
         "type": "string",
         "maxLength": 66,
         "minLength": 3,

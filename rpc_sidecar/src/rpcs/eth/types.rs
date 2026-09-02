@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 
 use casper_json_rpc::{Error as RpcError, ErrorCodeT, Params, ReservedErrorCode};
-use casper_types::{BlockHash, BlockIdentifier, Digest, GlobalStateIdentifier, evm};
+use casper_types::{BlockHash, BlockIdentifier, Digest, GlobalStateIdentifier, U256, evm};
 use schemars::{JsonSchema, r#gen::SchemaGenerator, schema::Schema};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -138,6 +138,49 @@ impl JsonSchema for HexData {
 impl DocExample for HexData {
     fn doc_example() -> &'static Self {
         &HEX_DATA_EXAMPLE
+    }
+}
+
+/// An Ethereum `bytesMax32` value: a 256-bit word encoded as `0x`-prefixed hexadecimal.
+///
+/// Compact and left-padded forms are both accepted — a caller may pass `0x1` for the word `1` —
+/// and the value is serialized back as a canonical Ethereum quantity. Used wherever the
+/// Execution API accepts a `bytesMax32`, e.g. the `eth_getStorageAt` slot and the
+/// `eth_getProof` storage keys.
+#[derive(
+    Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub(crate) struct EthBytesMax32(EthU256);
+
+impl EthBytesMax32 {
+    /// The zero word.
+    pub(super) const ZERO: Self = EthBytesMax32(EthU256::ZERO);
+
+    /// Returns the word as a 256-bit integer.
+    pub(super) fn value(self) -> U256 {
+        self.0.value()
+    }
+}
+
+impl JsonSchema for EthBytesMax32 {
+    fn schema_name() -> String {
+        "EthBytesMax32".to_string()
+    }
+
+    fn json_schema(schema_generator: &mut SchemaGenerator) -> Schema {
+        let schema = String::json_schema(schema_generator);
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some(
+            "An Ethereum bytesMax32 value encoded as 0x-prefixed hexadecimal with 1 to 64 \
+             digits; compact and left-padded forms are accepted."
+                .to_string(),
+        );
+        let string_validation = schema_object.string();
+        string_validation.min_length = Some(3);
+        string_validation.max_length = Some(2 + evm::HASH_LENGTH as u32 * 2);
+        string_validation.pattern = Some(r"^0x[0-9a-fA-F]{1,64}$".to_string());
+        schema_object.into()
     }
 }
 
